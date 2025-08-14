@@ -1,0 +1,235 @@
+import 'package:flutter/material.dart';
+import 'shop_page.dart'; // Make sure to import your ShopPage
+
+class AccountPage extends StatefulWidget {
+  @override
+  _AccountPageState createState() => _AccountPageState();
+}
+
+class _AccountPageState extends State<AccountPage> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  final List<String> dummyPosts = List.generate(12, (index) => 'https://via.placeholder.com/150');
+  final List<String> dummySaved = List.generate(6, (index) => 'https://via.placeholder.com/150/7f7fff');
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this); // Changed to 2 tabs
+  }
+  void _openSettings() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Settings & Privacy', 
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black)),
+              Divider(),
+              ListTile(
+                leading: Icon(Icons.lock, color: Colors.black),
+                title: Text('Privacy Settings', style: TextStyle(color: Colors.black)),
+                onTap: () {},
+              ),
+              ListTile(
+                leading: Icon(Icons.monetization_on, color: Colors.black),
+                title: Text('Monetization & Payments', style: TextStyle(color: Colors.black)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showMonetization();
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.logout, color: Colors.black),
+                title: Text('Log Out', style: TextStyle(color: Colors.black)),
+                onTap: () {},
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showMonetization() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Monetization', 
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black)),
+              Divider(),
+              ListTile(
+                leading: Icon(Icons.attach_money, color: Colors.black),
+                title: Text('Earnings Dashboard', style: TextStyle(color: Colors.black)),
+                onTap: () {},
+              ),
+              ListTile(
+                leading: Icon(Icons.account_balance_wallet, color: Colors.black),
+                title: Text('Payment Methods', style: TextStyle(color: Colors.black)),
+                onTap: () {},
+              ),
+              ListTile(
+                leading: Icon(Icons.analytics, color: Colors.black),
+                title: Text('Content Performance', style: TextStyle(color: Colors.black)),
+                onTap: () {},
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPostGrid(List<String> urls) {
+    return GridView.builder(
+      itemCount: urls.length,
+      padding: const EdgeInsets.all(8),
+      physics: NeverScrollableScrollPhysics(),
+      shrinkWrap: true,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 6,
+        crossAxisSpacing: 6,
+      ),
+      itemBuilder: (_, index) {
+        return Container(
+          decoration: BoxDecoration(
+            image: DecorationImage(
+              image: NetworkImage(urls[index]),
+              fit: BoxFit.cover,
+            ),
+            borderRadius: BorderRadius.circular(8),
+          ),
+        );
+      },
+    );
+  }
+@override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: Text('Riak', style: TextStyle(color: Colors.black)),
+        backgroundColor: Colors.white,
+        iconTheme: IconThemeData(color: Colors.black),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.settings, color: Colors.black),
+            onPressed: _openSettings,
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: EdgeInsets.all(16),
+        children: [
+          // Profile Header
+          Column(
+            children: [
+              CircleAvatar(
+                radius: 40,
+                backgroundImage: NetworkImage('https://i.pravatar.cc/150?img=12'),
+              ),
+              SizedBox(height: 10),
+              Text('Riak Wande', 
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black)),
+              Text('This is your bio. Add something cool here!', 
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.black)),
+              SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildStat('124', 'Following'),
+                  _buildStat('5.3K', 'Followers'),
+                  _buildStat('24.1K', 'Likes'),
+                ],
+              ),
+              SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  OutlinedButton(
+                    onPressed: () {}, 
+                    child: Text('Edit Profile', style: TextStyle(color: Colors.black)),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: Colors.black),
+                    ),
+                  ),
+                  SizedBox(width: 10),
+                  OutlinedButton(
+                    onPressed: () {}, 
+                    child: Text('Share Profile', style: TextStyle(color: Colors.black)),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: Colors.black),
+                    ),
+                  ),
+                  SizedBox(width: 10),
+                  OutlinedButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => ShopPage()),
+                      );
+                    }, 
+                    child: Text('Shop', style: TextStyle(color: Colors.black)),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: Colors.black),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          SizedBox(height: 20),
+
+          // Tabs - Now only 2 tabs
+          TabBar(
+            controller: _tabController,
+            labelColor: Colors.black,
+            unselectedLabelColor: Colors.grey,
+            indicatorColor: Colors.black,
+            tabs: [
+              Tab(icon: Icon(Icons.grid_on, color: _tabController.index == 0 ? Colors.black : Colors.grey)),
+              Tab(icon: Icon(Icons.bookmark_border, color: _tabController.index == 1 ? Colors.red : Colors.red)),
+            ],
+          ),
+          SizedBox(height: 10),
+
+          // Tab Content - Now only 2 children
+          IndexedStack(
+            index: _tabController.index,
+            children: [
+              _buildPostGrid(dummyPosts),
+              _buildPostGrid(dummySaved),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStat(String count, String label) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        children: [
+          Text(count, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black)),
+          SizedBox(height: 4),
+          Text(label, style: TextStyle(color: Colors.grey)),
+        ],
+      ),
+    );
+  }
+}

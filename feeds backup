@@ -1,0 +1,599 @@
+import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
+
+void main() => runApp(MyApp());
+
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      scrollBehavior: NoScrollbarBehavior(),
+      theme: ThemeData(
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: Colors.white,
+        primaryColor: Colors.green,
+        textTheme: TextTheme(bodyMedium: TextStyle(color: Colors.black)),
+        iconTheme: IconThemeData(color: Colors.green),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(foregroundColor: Colors.green),
+        ),
+        bottomSheetTheme: BottomSheetThemeData(
+          backgroundColor: Colors.grey[900],
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.zero,
+          ),
+        ),
+      ),
+      home: Scaffold(body: HomeFeedPage()),
+    );
+  }
+}
+
+class NoScrollbarBehavior extends ScrollBehavior {
+  @override
+  Widget buildScrollbar(BuildContext context, Widget child, ScrollableDetails details) {
+    return child;
+  }
+
+  @override
+  Widget buildOverscrollIndicator(BuildContext context, Widget child, ScrollableDetails details) {
+    return child;
+  }
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) {
+    return const BouncingScrollPhysics();
+  }
+}
+
+class HomeFeedPage extends StatelessWidget {
+  final List<Map<String, dynamic>> posts = [
+    {
+      'type': 'text',
+      'user': 'John Doe',
+      'avatar': 'https://i.pravatar.cc/150?img=1',
+      'text': 'Just enjoying a great day outside! ' * 10,
+    },
+    {
+      'type': 'image',
+      'user': 'Jane Smith',
+      'avatar': 'https://i.pravatar.cc/150?img=2',
+      'text': 'Check out this view!',
+      'imageUrls': [
+        'https://picsum.photos/id/237/800/600',
+        'https://picsum.photos/id/238/800/600',
+        'https://picsum.photos/id/239/800/600',
+        'https://picsum.photos/id/240/800/600',
+        'https://picsum.photos/id/241/800/600',
+        'https://picsum.photos/id/242/800/600',
+        'https://picsum.photos/id/243/800/600',
+        'https://picsum.photos/id/244/800/600',
+      ]
+    },
+    {
+      'type': 'video',
+      'user': 'Video Fan',
+      'avatar': 'https://i.pravatar.cc/150?img=3',
+      'text': 'Watch this cool clip!',
+      'videoUrl': 'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
+    },
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      itemCount: posts.length,
+      itemBuilder: (context, index) {
+        final post = posts[index];
+        return PostCard(post: post);
+      },
+    );
+  }
+}
+
+class PostCard extends StatefulWidget {
+  final Map<String, dynamic> post;
+  const PostCard({required this.post});
+
+  @override
+  State<PostCard> createState() => _PostCardState();
+}
+
+class _PostCardState extends State<PostCard> {
+  bool isFollowing = false;
+  bool liked = false;
+  bool saved = false;
+  bool expanded = false;
+  VideoPlayerController? _videoController;
+  int currentImageIndex = 0;
+  bool _isVideoPlaying = true;
+  final PageController _pageController = PageController();
+
+  int likeCount = 12;
+  int commentCount = 3;
+  int shareCount = 5;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.post['type'] == 'video') {
+      _videoController = VideoPlayerController.network(widget.post['videoUrl'])
+        ..initialize().then((_) {
+          setState(() {});
+          _videoController?.setLooping(true);
+          _videoController?.play();
+        });
+    }
+  }
+
+  @override
+  void dispose() {
+    _videoController?.dispose();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final post = widget.post;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(backgroundImage: NetworkImage(post['avatar'])),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(post['user'], style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+              TextButton(
+                onPressed: () => setState(() => isFollowing = !isFollowing),
+                child: Text(isFollowing ? 'Following' : 'Follow'),
+              ),
+            ],
+          ),
+          SizedBox(height: 10),
+          if (post['text'] != null) _buildPostText(post['text']),
+          SizedBox(height: 10),
+          if (post['type'] == 'image') _buildImageSlider(post),
+          if (post['type'] == 'video')
+            _videoController?.value.isInitialized == true
+                ? Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      AspectRatio(
+                        aspectRatio: _videoController!.value.aspectRatio,
+                        child: VideoPlayer(_videoController!),
+                      ),
+                      Positioned.fill(
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              if (_videoController!.value.isPlaying) {
+                                _videoController?.pause();
+                                _isVideoPlaying = false;
+                              } else {
+                                _videoController?.play();
+                                _isVideoPlaying = true;
+                              }
+                            });
+                          },
+                          child: Container(
+                            color: Colors.transparent,
+                            child: Center(
+                              child: Icon(
+                                _isVideoPlaying ? Icons.pause : Icons.play_arrow,
+                                size: 50,
+                                color: Colors.white.withOpacity(0.7),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        child: VideoProgressIndicator(
+                          _videoController!,
+                          allowScrubbing: true,
+                          colors: VideoProgressColors(
+                            playedColor: Colors.green,
+                            bufferedColor: Colors.grey,
+                            backgroundColor: Colors.grey.shade700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : Center(child: CircularProgressIndicator()),
+          SizedBox(height: 10),
+          Row(
+            children: [
+              IconButton(
+                icon: Icon(
+                  liked ? Icons.favorite : Icons.favorite_border,
+                  color: liked ? Colors.red : Colors.green,
+                ),
+                onPressed: () => setState(() {
+                  liked = !liked;
+                  likeCount += liked ? 1 : -1;
+                }),
+              ),
+              Text('$likeCount', style: TextStyle(color: Colors.white)),
+
+              IconButton(
+                icon: Icon(Icons.comment, color: Colors.green),
+                onPressed: () {
+                  _showComments(context);
+                  setState(() => commentCount++);
+                },
+              ),
+              Text('$commentCount', style: TextStyle(color: Colors.white)),
+
+              IconButton(
+                icon: Icon(Icons.share, color: Colors.green),
+                onPressed: () {
+                  _showShareOptions(context);
+                  setState(() => shareCount++);
+                },
+              ),
+              Text('$shareCount', style: TextStyle(color: Colors.white)),
+
+              Spacer(),
+              IconButton(
+                icon: Icon(
+                  saved ? Icons.bookmark : Icons.bookmark_border,
+                  color: saved ? Colors.green : Colors.green,
+                ),
+                onPressed: () => setState(() => saved = !saved),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPostText(String text) {
+    final maxLines = expanded ? null : 3;
+    final overflow = expanded ? TextOverflow.visible : TextOverflow.ellipsis;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(text, maxLines: maxLines, overflow: overflow, style: TextStyle(fontSize: 16)),
+        if (text.length > 100 && !expanded)
+          GestureDetector(
+            onTap: () => setState(() => expanded = true),
+            child: Text("Read more", style: TextStyle(color: Colors.green)),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildImageSlider(Map<String, dynamic> post) {
+    final List<String> images = List<String>.from(post['imageUrls']);
+    return Column(
+      children: [
+        LayoutBuilder(
+          builder: (context, constraints) {
+            return Stack(
+              children: [
+                SizedBox(
+                  height: constraints.maxWidth * 0.75,
+                  child: PageView.builder(
+                    controller: _pageController,
+                    itemCount: images.length,
+                    onPageChanged: (index) => setState(() => currentImageIndex = index),
+                    itemBuilder: (_, i) => Image.network(
+                      images[i],
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      errorBuilder: (context, error, stackTrace) =>
+                          Container(color: Colors.grey, child: Icon(Icons.error)),
+                    ),
+                  ),
+                ),
+                if (images.length > 1) ...[
+                  Positioned(
+                    left: 8,
+                    top: 0,
+                    bottom: 0,
+                    child: Center(
+                      child: IconButton(
+                        icon: Icon(Icons.arrow_back_ios, size: 20, color: Colors.white),
+                        onPressed: () {
+                          _pageController.previousPage(
+                            duration: Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: 8,
+                    top: 0,
+                    bottom: 0,
+                    child: Center(
+                      child: IconButton(
+                        icon: Icon(Icons.arrow_forward_ios, size: 20, color: Colors.white),
+                        onPressed: () {
+                          _pageController.nextPage(
+                            duration: Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            );
+          },
+        ),
+        SizedBox(height: 8),
+        if (images.length > 1)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(
+              images.length,
+              (index) => Container(
+                width: 8,
+                height: 8,
+                margin: EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: currentImageIndex == index ? Colors.green : Colors.grey,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _showShareOptions(BuildContext context) {
+    final platforms = [
+      {'icon': Icons.link, 'name': 'Copy Link', 'color': Colors.blue},
+      {'icon': Icons.message, 'name': 'Messages', 'color': Colors.green},
+      {'icon': Icons.email, 'name': 'Email', 'color': Colors.grey},
+      {'icon': Icons.facebook, 'name': 'Facebook', 'color': Colors.blue[800]},
+      {'icon': Icons.chat, 'name': 'WhatsApp', 'color': Colors.green},
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.grey[900],
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      builder: (_) => SizedBox(
+        height: 160,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Text('Share to',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+            ),
+            Expanded(
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: platforms.length,
+                itemBuilder: (context, index) {
+                  final platform = platforms[index];
+                  return Container(
+                    width: 80,
+                    padding: EdgeInsets.all(8),
+                    child: Column(
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: platform['color'] as Color? ?? Colors.grey.withOpacity(0.2),
+                          child: Icon(platform['icon'] as IconData, color: Colors.white),
+                        ),
+                        SizedBox(height: 4),
+                        Text(platform['name'] as String,
+                            style: TextStyle(fontSize: 12, color: Colors.white),
+                            overflow: TextOverflow.ellipsis),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showComments(BuildContext context) {
+    showModalBottomSheet(
+      isScrollControlled: true,
+      backgroundColor: Colors.grey[900],
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      context: context,
+      builder: (_) => CommentSection(),
+    );
+  }
+}
+
+class CommentSection extends StatefulWidget {
+  @override
+  State<CommentSection> createState() => _CommentSectionState();
+}
+
+class _CommentSectionState extends State<CommentSection> {
+  final List<Map<String, dynamic>> comments = [
+    {
+      'user': 'Alice',
+      'avatar': 'https://i.pravatar.cc/150?img=4',
+      'text': 'Nice!',
+      'liked': false,
+      'replies': [
+        {
+          'user': 'Bob',
+          'avatar': 'https://i.pravatar.cc/150?img=5',
+          'text': 'Totally agree!',
+          'liked': false,
+          'replies': []
+        }
+      ]
+    },
+  ];
+
+  final TextEditingController _controller = TextEditingController();
+
+  void _addComment(String text) {
+    if (text.trim().isEmpty) return;
+    setState(() {
+      comments.add({
+        'user': 'You',
+        'avatar': 'https://i.pravatar.cc/150?img=8',
+        'text': text,
+        'liked': false,
+        'replies': []
+      });
+      _controller.clear();
+    });
+  }
+
+  Widget _buildComment(Map<String, dynamic> comment, {int indent = 0}) {
+    final replyController = TextEditingController();
+    bool showReplyField = false;
+
+    return StatefulBuilder(builder: (context, setStateSB) {
+      return Padding(
+        padding: EdgeInsets.only(left: indent * 20.0, top: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ListTile(
+              leading: CircleAvatar(backgroundImage: NetworkImage(comment['avatar'])),
+              title: Text(comment['user'], style: TextStyle(color: Colors.white)),
+              subtitle: Text(comment['text'], style: TextStyle(color: Colors.grey)),
+              trailing: IconButton(
+                icon: Icon(
+                  comment['liked'] ? Icons.favorite : Icons.favorite_border,
+                  color: comment['liked'] ? Colors.red : Colors.green,
+                ),
+                onPressed: () => setState(() => comment['liked'] = !comment['liked']),
+              ),
+            ),
+            ...?comment['replies'].map<Widget>((reply) {
+              return _buildComment(reply, indent: indent + 1);
+            }).toList(),
+            Padding(
+              padding: const EdgeInsets.only(left: 60.0, bottom: 5),
+              child: Column(
+                children: [
+                  TextButton(
+                    child: Text("Reply", style: TextStyle(color: Colors.green)),
+                    onPressed: () => setStateSB(() => showReplyField = !showReplyField),
+                  ),
+                  if (showReplyField)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: replyController,
+                            style: TextStyle(color: Colors.white),
+                            decoration: InputDecoration(
+                              hintText: "Write a reply...",
+                              hintStyle: TextStyle(color: Colors.grey),
+                              border: OutlineInputBorder(),
+                              focusedBorder: OutlineInputBorder(
+                                borderSide: BorderSide(color: Colors.green),
+                              ),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.send, color: Colors.green),
+                          onPressed: () {
+                            if (replyController.text.trim().isNotEmpty) {
+                              setState(() {
+                                comment['replies'].add({
+                                  'user': 'You',
+                                  'avatar': 'https://i.pravatar.cc/150?img=8',
+                                  'text': replyController.text,
+                                  'liked': false,
+                                  'replies': []
+                                });
+                              });
+                              replyController.clear();
+                            }
+                          },
+                        )
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Column(
+        children: [
+          AppBar(
+            title: Text('Comments', style: TextStyle(color: Colors.white)),
+            backgroundColor: Colors.grey[900],
+            elevation: 0,
+            automaticallyImplyLeading: false,
+            actions: [
+              IconButton(
+                icon: Icon(Icons.close, color: Colors.green),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(12),
+              children: comments.map((c) => _buildComment(c)).toList(),
+            ),
+          ),
+          Divider(color: Colors.grey[800]),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    style: TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'Add a comment...',
+                      hintStyle: TextStyle(color: Colors.grey),
+                      border: OutlineInputBorder(),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.green),
+                      ),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.send, color: Colors.green),
+                  onPressed: () => _addComment(_controller.text),
+                )
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
