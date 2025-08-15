@@ -1,57 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-
-void main() => runApp(MyApp());
-
-class MyApp extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      scrollBehavior: NoScrollbarBehavior(),
-      theme: ThemeData(
-        brightness: Brightness.light,
-        scaffoldBackgroundColor: Colors.white,
-        primaryColor: Colors.black,
-        textTheme: TextTheme(bodyMedium: TextStyle(color: Colors.black)),
-        iconTheme: IconThemeData(color: Colors.black),
-        textButtonTheme: TextButtonThemeData(
-          style: TextButton.styleFrom(foregroundColor: Colors.black),
-        ),
-        bottomSheetTheme: BottomSheetThemeData(
-          backgroundColor: Colors.black,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        ),
-      ),
-      home: Scaffold(body: HomeFeedPage()),
-    );
-  }
-}
-
-class NoScrollbarBehavior extends ScrollBehavior {
-  @override
-  Widget buildScrollbar(
-    BuildContext context,
-    Widget child,
-    ScrollableDetails details,
-  ) {
-    return child;
-  }
-
-  @override
-  Widget buildOverscrollIndicator(
-    BuildContext context,
-    Widget child,
-    ScrollableDetails details,
-  ) {
-    return child;
-  }
-
-  @override
-  ScrollPhysics getScrollPhysics(BuildContext context) {
-    return const BouncingScrollPhysics();
-  }
-}
+import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
+import 'package:ongea/services/gift_page.dart';
 
 class HomeFeedPage extends StatefulWidget {
   @override
@@ -59,75 +12,21 @@ class HomeFeedPage extends StatefulWidget {
 }
 
 class _HomeFeedPageState extends State<HomeFeedPage> {
-  final String currentUserName = "John Doe";
-  final String currentUserAvatar = "https://i.pravatar.cc/150?img=1";
-  bool _showSearchModal = false;
-  String _searchQuery = "";
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final DatabaseReference _database = FirebaseDatabase.instance.ref('posts');
   final TextEditingController _searchController = TextEditingController();
 
-  final posts = [
-    {
-      'type': 'text',
-      'user': 'John Doe',
-      'avatar': 'https://i.pravatar.cc/150?img=1',
-      'text':
-          'Just enjoying a great day outside! #sunshine @naturelover https://example.com' *
-          2,
-    },
-    {
-      'type': 'video',
-      'user': 'Video Fan',
-      'avatar': 'https://i.pravatar.cc/150?img=3',
-      'text': 'Watch this cool clip! #bee @insectlover https://flutter.dev',
-      'videoUrl':
-          'https://sample-videos.com/video123/mp4/480/asdasdas.mp4', // landscape
-    },
-    {
-      'type': 'image',
-      'user': 'Jane Smith',
-      'avatar': 'https://i.pravatar.cc/150?img=2',
-      'text':
-          'Check out this view! #landscape @travelgram https://picsum.photos ' *
-          2,
-      'imageUrls': [
-        'https://picsum.photos/id/237/800/600',
-        'https://picsum.photos/id/238/800/600',
-        'https://picsum.photos/id/239/800/600',
-        'https://picsum.photos/id/240/800/600',
-        'https://picsum.photos/id/241/800/600',
-        'https://picsum.photos/id/242/800/600',
-        'https://picsum.photos/id/243/800/600',
-        'https://picsum.photos/id/244/800/600',
-      ],
-    },
-    {
-      'type': 'video',
-      'user': 'Tall Video Guy',
-      'avatar': 'https://i.pravatar.cc/150?img=5',
-      'text': 'Vertical vibes #reelstyle @portraitmode https://vertical.com',
-      'videoUrl':
-          'https://samplelib.com/lib/preview/mp4/sample-5s.mp4', // short & portrait-style
-    },
-    {
-      'type': 'video',
-      'user': 'Slow Motion Buff',
-      'avatar': 'https://i.pravatar.cc/150?img=7',
-      'text': 'Slow-mo magic! #slowmotion @videofx https://motionworld.com',
-      'videoUrl':
-          'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4', // original
-    },
-  ];
-
-  List<Map<String, dynamic>> get _filteredPosts {
-    if (_searchQuery.isEmpty) return [];
-    return posts.where((post) {
-      final user = post['user'] as String;
-      final text = post['text'] as String;
-      return user.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          text.toLowerCase().contains(_searchQuery.toLowerCase());
-    }).toList();
-  }
-
+  bool _showSearchModal = false;
+  String _searchQuery = "";
+  String? _currentUserId;
+  String? _currentUserName;
+  String? _currentUserAvatar;
+  
+  List<Map<String, dynamic>> _posts = [];
+  List<Map<String, dynamic>> _filteredPosts = [];
+  final Map<String, int> _giftCounts = {};
+  final Map<String, bool> _hasGifted = {};
+  
   final ScrollController _scrollController = ScrollController();
   final Map<int, VideoPlayerController?> _videoControllers = {};
   final Map<int, GlobalKey> _videoKeys = {};
@@ -138,18 +37,81 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
   void initState() {
     super.initState();
     _scrollController.addListener(_handleScroll);
-    _initializeVideoControllers();
+    _loadCurrentUser();
+    _loadPosts();
+    _loadGiftCounts();
+  }
+
+  void _loadCurrentUser() {
+    final user = _auth.currentUser;
+    if (user != null) {
+      setState(() {
+        _currentUserId = user.uid;
+        _currentUserName = user.displayName ?? 'Anonymous';
+        _currentUserAvatar = user.photoURL ?? 'https://i.pravatar.cc/150?img=1';
+      });
+    }
+  }
+
+  void _loadPosts() {
+    _database.orderByChild('timestamp').onValue.listen((event) {
+      final data = event.snapshot.value as Map<dynamic, dynamic>?;
+      if (data != null) {
+        final postsList = data.entries.map((entry) {
+          final post = Map<String, dynamic>.from(entry.value as Map);
+          post['key'] = entry.key;
+          return post;
+        }).toList();
+        
+        postsList.sort((a, b) => (b['timestamp'] ?? 0).compareTo(a['timestamp'] ?? 0));
+        
+        setState(() {
+          _posts = postsList;
+          _initializeVideoControllers();
+        });
+      }
+    });
+  }
+
+  void _loadGiftCounts() {
+    _database.child('gifts').onValue.listen((event) {
+      final data = event.snapshot.value as Map<dynamic, dynamic>?;
+      if (data != null) {
+        setState(() {
+          _giftCounts.clear();
+          _hasGifted.clear();
+          data.forEach((postId, gifts) {
+            if (gifts is Map) {
+              int total = 0;
+              gifts.forEach((userId, count) {
+                total += (count as int? ?? 0);
+                if (userId == _currentUserId) {
+                  _hasGifted[postId as String] = true;
+                }
+              });
+              _giftCounts[postId as String] = total;
+            }
+          });
+        });
+      }
+    });
   }
 
   void _initializeVideoControllers() {
-    for (var i = 0; i < posts.length; i++) {
-      if (posts[i]['type'] == 'video') {
-        _videoControllers[i] =
-            VideoPlayerController.network(posts[i]['videoUrl'] as String)
-              ..initialize().then((_) {
-                if (mounted) setState(() {});
-                _videoControllers[i]?.setLooping(true);
-              });
+    for (var controller in _videoControllers.values) {
+      controller?.dispose();
+    }
+    _videoControllers.clear();
+    _videoKeys.clear();
+    _userPausedVideos.clear();
+
+    for (var i = 0; i < _posts.length; i++) {
+      if (_posts[i]['mediaType'] == 'video') {
+        _videoControllers[i] = VideoPlayerController.network(_posts[i]['videoUrl'] as String)
+          ..initialize().then((_) {
+            if (mounted) setState(() {});
+            _videoControllers[i]?.setLooping(true);
+          });
         _videoKeys[i] = GlobalKey();
         _userPausedVideos[i] = false;
       }
@@ -162,8 +124,8 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
     int? mostVisibleIndex;
     double maxVisiblePercentage = 0;
 
-    for (var i = 0; i < posts.length; i++) {
-      if (posts[i]['type'] != 'video') continue;
+    for (var i = 0; i < _posts.length; i++) {
+      if (_posts[i]['mediaType'] != 'video') continue;
 
       final key = _videoKeys[i];
       if (key?.currentContext == null) continue;
@@ -177,10 +139,10 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
 
       final visibleHeight =
           (position.dy + size.height < 0 || position.dy > screenHeight)
-          ? 0.0
-          : (position.dy + size.height > screenHeight
-                ? screenHeight - (position.dy > 0 ? position.dy : 0)
-                : (position.dy < 0 ? position.dy + size.height : size.height));
+              ? 0.0
+              : (position.dy + size.height > screenHeight
+                  ? screenHeight - (position.dy > 0 ? position.dy : 0)
+                  : (position.dy < 0 ? position.dy + size.height : size.height));
 
       final visiblePercentage = visibleHeight / size.height;
 
@@ -210,6 +172,59 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
     }
   }
 
+  Future<void> _sendGift(String postId) async {
+    if (_currentUserId == null) return;
+    
+    final post = _posts.firstWhere((p) => p['key'] == postId);
+    
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => GiftPage(
+          recipientName: post['userName'] ?? 'User',
+          recipientAvatar: post['userPhoto'] ?? 'https://i.pravatar.cc/150',
+          recipientId: post['userId'],
+          postId: postId,
+        ),
+      ),
+    );
+    
+    _loadGiftCounts();
+  }
+
+  Future<void> _toggleLike(String postKey) async {
+    if (_currentUserId == null) return;
+
+    final postRef = _database.child(postKey);
+    final postSnapshot = await postRef.get();
+    if (!postSnapshot.exists) return;
+
+    final post = Map<String, dynamic>.from(postSnapshot.value as Map);
+    final likes = Map<String, dynamic>.from(post['likes'] ?? {});
+    final isLiked = likes[_currentUserId] == true;
+
+    await postRef.update({
+      'likes/$_currentUserId': isLiked ? null : true,
+      'likesCount': isLiked ? (post['likesCount'] ?? 1) - 1 : (post['likesCount'] ?? 0) + 1,
+    });
+  }
+
+  Future<void> _toggleSave(String postKey) async {
+    if (_currentUserId == null) return;
+
+    final userSavesRef = FirebaseDatabase.instance
+        .ref('userSaves/$_currentUserId/$postKey');
+    
+    final saveSnapshot = await userSavesRef.get();
+    final isSaved = saveSnapshot.exists;
+
+    if (isSaved) {
+      await userSavesRef.remove();
+    } else {
+      await userSavesRef.set(ServerValue.timestamp);
+    }
+  }
+
   void _openSearchModal() {
     setState(() {
       _showSearchModal = true;
@@ -221,6 +236,23 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
       _showSearchModal = false;
       _searchQuery = "";
       _searchController.clear();
+      _filteredPosts.clear();
+    });
+  }
+
+  void _updateSearchQuery(String query) {
+    setState(() {
+      _searchQuery = query;
+      if (query.isNotEmpty) {
+        _filteredPosts = _posts.where((post) {
+          final user = post['userName'] as String? ?? 'Anonymous';
+          final text = post['caption'] as String? ?? '';
+          return user.toLowerCase().contains(query.toLowerCase()) ||
+              text.toLowerCase().contains(query.toLowerCase());
+        }).toList();
+      } else {
+        _filteredPosts.clear();
+      }
     });
   }
 
@@ -233,17 +265,17 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
           Row(
             children: [
               CircleAvatar(
-                backgroundImage: NetworkImage(currentUserAvatar),
+                backgroundImage: NetworkImage(_currentUserAvatar ?? 'https://i.pravatar.cc/150?img=1'),
                 radius: 20,
               ),
-              SizedBox(width: 10),
+              const SizedBox(width: 10),
               Text(
-                currentUserName,
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                _currentUserName ?? 'Loading...',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
             ],
           ),
-          IconButton(icon: Icon(Icons.search), onPressed: _openSearchModal),
+          IconButton(icon: const Icon(Icons.search), onPressed: _openSearchModal),
         ],
       ),
     );
@@ -253,57 +285,40 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
     return ModalBottomSheet(
       context: context,
       builder: (context) => Container(
-        padding: EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(context).size.height * 0.9,
         ),
-
         child: Column(
           children: [
             TextField(
               controller: _searchController,
               autofocus: true,
-              style: TextStyle(color: Colors.black), // Text color when typing
+              style: const TextStyle(color: Colors.black),
               decoration: InputDecoration(
                 hintText: 'Search posts...',
-                hintStyle: TextStyle(
-                  color: Colors.grey,
-                ), // Only the placeholder is grey
-                prefixIcon: Icon(
-                  Icons.search,
-                  color: Colors.black,
-                ), // Black search icon
+                hintStyle: const TextStyle(color: Colors.grey),
+                prefixIcon: const Icon(Icons.search, color: Colors.black),
                 suffixIcon: IconButton(
-                  icon: Icon(
-                    Icons.close,
-                    color: Colors.black,
-                  ), // Black close icon
+                  icon: const Icon(Icons.close, color: Colors.black),
                   onPressed: _closeSearchModal,
                 ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.black), // Black border
+                  borderSide: const BorderSide(color: Colors.black),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(
-                    color: Colors.black,
-                  ), // Black border when enabled
+                  borderSide: const BorderSide(color: Colors.black),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(
-                    color: Colors.black,
-                  ), // Black border when focused
+                  borderSide: const BorderSide(color: Colors.black),
                 ),
               ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
+              onChanged: _updateSearchQuery,
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Expanded(
               child: _searchQuery.isEmpty
                   ? Center(
@@ -313,38 +328,102 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
                       ),
                     )
                   : _filteredPosts.isEmpty
-                  ? Center(
-                      child: Text(
-                        'No results found',
-                        style: TextStyle(color: Colors.red),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: _filteredPosts.length,
-                      itemBuilder: (context, index) {
-                        final post = _filteredPosts[index];
-                        final originalIndex = posts.indexWhere(
-                          (p) => p == post,
-                        );
-                        if (originalIndex == -1) return SizedBox.shrink();
+                      ? Center(
+                          child: Text(
+                            'No results found',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: _filteredPosts.length,
+                          itemBuilder: (context, index) {
+                            final post = _filteredPosts[index];
+                            final originalIndex = _posts.indexWhere((p) => p['key'] == post['key']);
+                            if (originalIndex == -1) return const SizedBox.shrink();
 
+                            return Column(
+                              children: [
+                                PostCard(
+                                  post: post,
+                                  videoController: _videoControllers[originalIndex],
+                                  videoKey: _videoKeys[originalIndex],
+                                  isPlaying: originalIndex == _currentlyPlayingIndex,
+                                  isUserPaused: _userPausedVideos[originalIndex] ?? false,
+                                  onUserPause: (bool paused) {
+                                    setState(() {
+                                      _userPausedVideos[originalIndex] = paused;
+                                      if (paused) {
+                                        _videoControllers[originalIndex]?.pause();
+                                        if (_currentlyPlayingIndex == originalIndex) {
+                                          _currentlyPlayingIndex = null;
+                                        }
+                                      } else {
+                                        _handleScroll();
+                                      }
+                                    });
+                                  },
+                                  currentUserId: _currentUserId,
+                                  onLike: (String postKey) => _toggleLike(postKey),
+                                  onSave: (String postKey) => _toggleSave(postKey),
+                                  onGift: (String postKey) => _sendGift(postKey),
+                                  giftCount: _giftCounts[post['key']] ?? 0,
+                                  hasGifted: _hasGifted[post['key']] ?? false,
+                                ),
+                                const SizedBox(height: 8),
+                                const Divider(height: 1, color: Colors.grey),
+                              ],
+                            );
+                          },
+                        ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Stack(
+        children: [
+          Column(
+            children: [
+              _buildTopBar(),
+              Expanded(
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (scrollNotification) {
+                    if (scrollNotification is ScrollUpdateNotification ||
+                        scrollNotification is ScrollStartNotification) {
+                      _handleScroll();
+                    }
+                    return false;
+                  },
+                  child: RefreshIndicator(
+                    onRefresh: () async {
+                      await Future.delayed(const Duration(seconds: 1));
+                      _loadPosts();
+                    },
+                    child: ListView.builder(
+                      controller: _scrollController,
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: _posts.length,
+                      itemBuilder: (context, index) {
+                        final post = _posts[index];
                         return Column(
                           children: [
                             PostCard(
                               post: post,
-                              videoController: _videoControllers[originalIndex],
-                              videoKey: _videoKeys[originalIndex],
-                              isPlaying:
-                                  originalIndex == _currentlyPlayingIndex,
-                              isUserPaused:
-                                  _userPausedVideos[originalIndex] ?? false,
+                              videoController: _videoControllers[index],
+                              videoKey: _videoKeys[index],
+                              isPlaying: index == _currentlyPlayingIndex,
+                              isUserPaused: _userPausedVideos[index] ?? false,
                               onUserPause: (bool paused) {
                                 setState(() {
-                                  _userPausedVideos[originalIndex] = paused;
+                                  _userPausedVideos[index] = paused;
                                   if (paused) {
-                                    _videoControllers[originalIndex]?.pause();
-                                    if (_currentlyPlayingIndex ==
-                                        originalIndex) {
+                                    _videoControllers[index]?.pause();
+                                    if (_currentlyPlayingIndex == index) {
                                       _currentlyPlayingIndex = null;
                                     }
                                   } else {
@@ -352,85 +431,29 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
                                   }
                                 });
                               },
+                              currentUserId: _currentUserId,
+                              onLike: (String postKey) => _toggleLike(postKey),
+                              onSave: (String postKey) => _toggleSave(postKey),
+                              onGift: (String postKey) => _sendGift(postKey),
+                              giftCount: _giftCounts[post['key']] ?? 0,
+                              hasGifted: _hasGifted[post['key']] ?? false,
                             ),
-                            SizedBox(height: 8),
-                            Divider(height: 1, color: Colors.grey[300]),
+                            const SizedBox(height: 8),
+                            const Divider(height: 1, color: Colors.grey),
                           ],
                         );
                       },
                     ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-@override
-Widget build(BuildContext context) {
-  return SafeArea( // ✅ Prevents overlapping with status bar (time, battery, etc.)
-    child: Stack(
-      children: [
-        Column(
-          children: [
-            _buildTopBar(),
-            Expanded(
-              child: NotificationListener<ScrollNotification>(
-                onNotification: (scrollNotification) {
-                  if (scrollNotification is ScrollUpdateNotification ||
-                      scrollNotification is ScrollStartNotification) {
-                    _handleScroll();
-                  }
-                  return false;
-                },
-                child: RefreshIndicator(
-                  onRefresh: () async {
-                    await Future.delayed(Duration(seconds: 2));
-                    setState(() {});
-                  },
-                  child: ListView.builder(
-                    controller: _scrollController,
-                    physics: const BouncingScrollPhysics(),
-                    itemCount: posts.length,
-                    itemBuilder: (context, index) {
-                      final post = posts[index];
-                      return Column(
-                        children: [
-                          PostCard(
-                            post: post,
-                            videoController: _videoControllers[index],
-                            videoKey: _videoKeys[index],
-                            isPlaying: index == _currentlyPlayingIndex,
-                            isUserPaused: _userPausedVideos[index] ?? false,
-                            onUserPause: (bool paused) {
-                              setState(() {
-                                _userPausedVideos[index] = paused;
-                                if (paused) {
-                                  _videoControllers[index]?.pause();
-                                  if (_currentlyPlayingIndex == index) {
-                                    _currentlyPlayingIndex = null;
-                                  }
-                                } else {
-                                  _handleScroll();
-                                }
-                              });
-                            },
-                          ),
-                          SizedBox(height: 8),
-                          Divider(height: 1, color: Colors.grey[300]),
-                        ],
-                      );
-                    },
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
-        if (_showSearchModal) _buildSearchModal(),
-      ],
-    ),
-  );
-}
+            ],
+          ),
+          if (_showSearchModal) _buildSearchModal(),
+        ],
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -444,25 +467,6 @@ Widget build(BuildContext context) {
   }
 }
 
-class ModalBottomSheet extends StatelessWidget {
-  final BuildContext context;
-  final Widget Function(BuildContext) builder;
-
-  const ModalBottomSheet({
-    required this.context,
-    required this.builder,
-    Key? key,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(color: Colors.white),
-      child: builder(context),
-    );
-  }
-}
-
 class PostCard extends StatefulWidget {
   final Map<String, dynamic> post;
   final VideoPlayerController? videoController;
@@ -470,6 +474,12 @@ class PostCard extends StatefulWidget {
   final bool isPlaying;
   final bool isUserPaused;
   final Function(bool) onUserPause;
+  final String? currentUserId;
+  final Function(String) onLike;
+  final Function(String) onSave;
+  final Function(String) onGift;
+  final int giftCount;
+  final bool hasGifted;
 
   const PostCard({
     required this.post,
@@ -478,6 +488,12 @@ class PostCard extends StatefulWidget {
     this.isPlaying = false,
     this.isUserPaused = false,
     required this.onUserPause,
+    this.currentUserId,
+    required this.onLike,
+    required this.onSave,
+    required this.onGift,
+    required this.giftCount,
+    required this.hasGifted,
   });
 
   @override
@@ -485,19 +501,13 @@ class PostCard extends StatefulWidget {
 }
 
 class _PostCardState extends State<PostCard> {
-  bool isFollowing = false;
-  bool liked = false;
-  bool saved = false;
-  bool expanded = false;
-  int currentImageIndex = 0;
+  bool _isFollowing = false;
+  bool _expanded = false;
+  int _currentImageIndex = 0;
   bool _showVideoControls = false;
   bool _isVideoInitialized = false;
   final PageController _pageController = PageController();
   bool _controlsHovered = false;
-
-  int likeCount = 12;
-  int commentCount = 3;
-  int shareCount = 5;
 
   @override
   void initState() {
@@ -543,12 +553,30 @@ class _PostCardState extends State<PostCard> {
 
   void _togglePlayPause() {
     if (widget.isUserPaused) {
-      // User had paused, now wants to resume
       widget.onUserPause(false);
     } else {
-      // Video is playing, user wants to pause
       widget.onUserPause(true);
     }
+  }
+
+  bool get _isLiked {
+    if (widget.currentUserId == null) return false;
+    final likes = widget.post['likes'] is Map ? widget.post['likes'] as Map : {};
+    return likes[widget.currentUserId] == true;
+  }
+
+  bool get _isSaved {
+    return false;
+  }
+
+  int get _likeCount {
+    return widget.post['likesCount'] as int? ?? 0;
+  }
+
+  String _formatTimestamp(int timestamp) {
+    if (timestamp == null) return '';
+    final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
+    return DateFormat('MMM d, y').format(date);
   }
 
   @override
@@ -557,37 +585,41 @@ class _PostCardState extends State<PostCard> {
 
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.white),
+      decoration: const BoxDecoration(color: Colors.white),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              CircleAvatar(backgroundImage: NetworkImage(post['avatar'])),
-              SizedBox(width: 10),
+              CircleAvatar(
+                backgroundImage: NetworkImage(post['userPhoto'] ?? 'https://i.pravatar.cc/150'),
+              ),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  post['user'],
-                  style: TextStyle(
+                  post['userName'] ?? 'Anonymous',
+                  style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.black,
                   ),
                 ),
               ),
               TextButton(
-                onPressed: () => setState(() => isFollowing = !isFollowing),
+                onPressed: () => setState(() => _isFollowing = !_isFollowing),
                 style: TextButton.styleFrom(
-                  foregroundColor: isFollowing ? Colors.red : Colors.red,
+                  foregroundColor: _isFollowing ? Colors.red : Colors.red,
                 ),
-                child: Text(isFollowing ? 'Following' : 'Follow'),
+                child: Text(_isFollowing ? 'Following' : 'Follow'),
               ),
             ],
           ),
-          SizedBox(height: 10),
-          if (post['text'] != null) _buildPostText(post['text']),
-          SizedBox(height: 10),
-          if (post['type'] == 'image') _buildImageSlider(post),
-          if (post['type'] == 'video')
+          const SizedBox(height: 10),
+          if (post['caption'] != null && post['caption'].toString().isNotEmpty)
+            _buildPostText(post['caption'].toString()),
+          const SizedBox(height: 10),
+          if (post['mediaType'] == 'single_image' || post['mediaType'] == 'multiple_images')
+            _buildImageSlider(post),
+          if (post['mediaType'] == 'video')
             _isVideoInitialized
                 ? GestureDetector(
                     onTap: () {
@@ -639,10 +671,10 @@ class _PostCardState extends State<PostCard> {
                             child: VideoProgressIndicator(
                               widget.videoController!,
                               allowScrubbing: true,
-                              colors: VideoProgressColors(
+                              colors: const VideoProgressColors(
                                 playedColor: Colors.red,
                                 bufferedColor: Colors.grey,
-                                backgroundColor: Colors.grey.shade700,
+                                backgroundColor: Colors.grey,
                               ),
                             ),
                           ),
@@ -650,49 +682,54 @@ class _PostCardState extends State<PostCard> {
                       ),
                     ),
                   )
-                : Center(child: CircularProgressIndicator()),
-          SizedBox(height: 10),
+                : const Center(child: CircularProgressIndicator()),
+          const SizedBox(height: 10),
           Row(
             children: [
               IconButton(
                 icon: Icon(
-                  liked ? Icons.favorite : Icons.favorite_border,
-                  color: liked ? Colors.red : Colors.black,
+                  _isLiked ? Icons.favorite : Icons.favorite_border,
+                  color: _isLiked ? Colors.red : Colors.black,
                 ),
-                onPressed: () => setState(() {
-                  liked = !liked;
-                  likeCount += liked ? 1 : -1;
-                }),
+                onPressed: () => widget.onLike(post['key']),
               ),
-              Text('$likeCount', style: TextStyle(color: Colors.black)),
-
+              Text('$_likeCount', style: const TextStyle(color: Colors.black)),
               IconButton(
-                icon: Icon(Icons.comment, color: Colors.black),
-                onPressed: () {
-                  _showComments(context);
-                  setState(() => commentCount++);
-                },
+                icon: const Icon(Icons.comment, color: Colors.black),
+                onPressed: () => _showComments(context),
               ),
-              Text('$commentCount', style: TextStyle(color: Colors.black)),
-
+              const Text('0', style: TextStyle(color: Colors.black)),
               IconButton(
-                icon: Icon(Icons.share, color: Colors.black),
-                onPressed: () {
-                  _showShareOptions(context);
-                  setState(() => shareCount++);
-                },
+                icon: const Icon(Icons.share, color: Colors.black),
+                onPressed: () => _showShareOptions(context),
               ),
-              Text('$shareCount', style: TextStyle(color: Colors.black)),
-
-              Spacer(),
               IconButton(
                 icon: Icon(
-                  saved ? Icons.bookmark : Icons.bookmark_border,
-                  color: saved ? Colors.red : Colors.black,
+                  widget.hasGifted ? Icons.card_giftcard : Icons.card_giftcard_outlined,
+                  color: widget.hasGifted ? Colors.pink : Colors.black,
                 ),
-                onPressed: () => setState(() => saved = !saved),
+                onPressed: () => widget.onGift(post['key']),
+              ),
+              Text(
+                '${widget.giftCount}',
+                style: const TextStyle(color: Colors.black),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: Icon(
+                  _isSaved ? Icons.bookmark : Icons.bookmark_border,
+                  color: _isSaved ? Colors.red : Colors.black,
+                ),
+                onPressed: () => widget.onSave(post['key']),
               ),
             ],
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: Text(
+              _formatTimestamp(post['timestamp']),
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
           ),
         ],
       ),
@@ -700,8 +737,8 @@ class _PostCardState extends State<PostCard> {
   }
 
   Widget _buildPostText(String text) {
-    final maxLines = expanded ? null : 1;
-    final overflow = expanded ? TextOverflow.visible : TextOverflow.ellipsis;
+    final maxLines = _expanded ? null : 3;
+    final overflow = _expanded ? TextOverflow.visible : TextOverflow.ellipsis;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -710,15 +747,14 @@ class _PostCardState extends State<PostCard> {
           text,
           maxLines: maxLines,
           overflow: overflow,
-          style: TextStyle(fontSize: 16, color: Colors.black),
+          style: const TextStyle(fontSize: 16, color: Colors.black),
         ),
-        if (text.trim().length >
-            30) // Only show if text is longer than 30 chars
+        if (text.length > 100)
           GestureDetector(
-            onTap: () => setState(() => expanded = !expanded),
+            onTap: () => setState(() => _expanded = !_expanded),
             child: Text(
-              expanded ? "Read less" : "Read more",
-              style: TextStyle(color: Colors.red),
+              _expanded ? "Read less" : "Read more",
+              style: const TextStyle(color: Colors.red),
             ),
           ),
       ],
@@ -726,7 +762,10 @@ class _PostCardState extends State<PostCard> {
   }
 
   Widget _buildImageSlider(Map<String, dynamic> post) {
-    final List<String> images = List<String>.from(post['imageUrls']);
+    final List<String> images = post['mediaType'] == 'single_image'
+        ? [post['imageUrls'][0]]
+        : List<String>.from(post['imageUrls'] ?? []);
+
     return Column(
       children: [
         LayoutBuilder(
@@ -739,14 +778,14 @@ class _PostCardState extends State<PostCard> {
                     controller: _pageController,
                     itemCount: images.length,
                     onPageChanged: (index) =>
-                        setState(() => currentImageIndex = index),
+                        setState(() => _currentImageIndex = index),
                     itemBuilder: (_, i) => Image.network(
                       images[i],
                       fit: BoxFit.cover,
                       width: double.infinity,
                       errorBuilder: (context, error, stackTrace) => Container(
                         color: Colors.black,
-                        child: Icon(Icons.error),
+                        child: const Icon(Icons.error),
                       ),
                     ),
                   ),
@@ -758,14 +797,14 @@ class _PostCardState extends State<PostCard> {
                     bottom: 0,
                     child: Center(
                       child: IconButton(
-                        icon: Icon(
+                        icon: const Icon(
                           Icons.arrow_back_ios,
                           size: 20,
                           color: Colors.white,
                         ),
                         onPressed: () {
                           _pageController.previousPage(
-                            duration: Duration(milliseconds: 300),
+                            duration: const Duration(milliseconds: 300),
                             curve: Curves.easeInOut,
                           );
                         },
@@ -778,14 +817,14 @@ class _PostCardState extends State<PostCard> {
                     bottom: 0,
                     child: Center(
                       child: IconButton(
-                        icon: Icon(
+                        icon: const Icon(
                           Icons.arrow_forward_ios,
                           size: 20,
                           color: Colors.white,
                         ),
                         onPressed: () {
                           _pageController.nextPage(
-                            duration: Duration(milliseconds: 300),
+                            duration: const Duration(milliseconds: 300),
                             curve: Curves.easeInOut,
                           );
                         },
@@ -797,7 +836,7 @@ class _PostCardState extends State<PostCard> {
             );
           },
         ),
-        SizedBox(height: 8),
+        const SizedBox(height: 8),
         if (images.length > 1)
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -806,10 +845,10 @@ class _PostCardState extends State<PostCard> {
               (index) => Container(
                 width: 8,
                 height: 8,
-                margin: EdgeInsets.symmetric(horizontal: 4),
+                margin: const EdgeInsets.symmetric(horizontal: 4),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: currentImageIndex == index ? Colors.red : Colors.black,
+                  color: _currentImageIndex == index ? Colors.red : Colors.black,
                 ),
               ),
             ),
@@ -850,7 +889,7 @@ class _PostCardState extends State<PostCard> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.grey[900],
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       builder: (_) => SizedBox(
         height: 160,
         child: Column(
@@ -874,22 +913,21 @@ class _PostCardState extends State<PostCard> {
                   final platform = platforms[index];
                   return Container(
                     width: 80,
-                    padding: EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(8),
                     child: Column(
                       children: [
                         CircleAvatar(
                           backgroundColor:
-                              platform['color'] as Color? ??
-                              Colors.grey.withOpacity(0.2),
+                              platform['color'] as Color? ?? Colors.grey.withOpacity(0.2),
                           child: Icon(
                             platform['icon'] as IconData,
                             color: Colors.white,
                           ),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 4),
                         Text(
                           platform['name'] as String,
-                          style: TextStyle(fontSize: 12, color: Colors.white),
+                          style: const TextStyle(fontSize: 12, color: Colors.white),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
@@ -908,28 +946,38 @@ class _PostCardState extends State<PostCard> {
     showModalBottomSheet(
       isScrollControlled: true,
       backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       context: context,
-      builder: (_) => CommentSection(),
+      builder: (_) => CommentSection(postId: widget.post['key']),
     );
   }
 }
 
 class CommentSection extends StatefulWidget {
+  final String postId;
+
+  const CommentSection({required this.postId});
+
   @override
   State<CommentSection> createState() => _CommentSectionState();
 }
 
 class _CommentSectionState extends State<CommentSection> {
-  final List<Map<String, dynamic>> comments = [
+  final TextEditingController _inputController = TextEditingController();
+  int? _replyingToIndex;
+  int? _replyingToParentIndex;
+  final Set<String> _expandedReplies = {};
+
+  // In a real app, you would fetch comments from Firebase
+  final List<Map<String, dynamic>> _comments = [
     {
       'user': 'Alice',
       'avatar': 'https://i.pravatar.cc/150?img=4',
       'text': 'Nice!',
       'liked': false,
       'likeCount': 5,
+      'timestamp': DateTime.now().subtract(Duration(hours: 2)).millisecondsSinceEpoch,
       'replies': [
         {
           'user': 'Bob',
@@ -937,68 +985,143 @@ class _CommentSectionState extends State<CommentSection> {
           'text': 'Totally agree!',
           'liked': false,
           'likeCount': 2,
+          'timestamp': DateTime.now().subtract(Duration(hours: 1)).millisecondsSinceEpoch,
           'replies': [],
         },
       ],
     },
   ];
 
-  final TextEditingController _inputController = TextEditingController();
-  int? _replyingToIndex;
-  int? _replyingToParentIndex;
-  final Set<String> _expandedReplies = {};
-
   String _commentKey(int index, [int? parentIndex]) =>
       parentIndex != null ? '$parentIndex-$index' : '$index';
 
-  void _submitInput() {
-    final text = _inputController.text.trim();
-    if (text.isEmpty) return;
+  String _formatTimestamp(int timestamp) {
+    final now = DateTime.now();
+    final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
+    final difference = now.difference(date);
 
-    if (_replyingToIndex != null) {
-      _addReply(text, _replyingToIndex!, _replyingToParentIndex);
+    if (difference.inDays > 365) {
+      return '${(difference.inDays / 365).floor()}y';
+    } else if (difference.inDays > 30) {
+      return '${(difference.inDays / 30).floor()}mo';
+    } else if (difference.inDays > 0) {
+      return '${difference.inDays}d';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours}h';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}m';
     } else {
-      _addComment(text);
+      return 'Just now';
     }
-
-    _inputController.clear();
-    _replyingToIndex = null;
-    _replyingToParentIndex = null;
-    setState(() {});
   }
 
-  void _addComment(String text) {
-    setState(() {
-      comments.add({
-        'user': 'You',
-        'avatar': 'https://i.pravatar.cc/150?img=8',
-        'text': text,
-        'liked': false,
-        'likeCount': 0,
-        'replies': [],
-      });
-    });
-  }
-
-  void _addReply(String text, int parentIndex, [int? grandParentIndex]) {
-    setState(() {
-      final reply = {
-        'user': 'You',
-        'avatar': 'https://i.pravatar.cc/150?img=8',
-        'text': text,
-        'liked': false,
-        'likeCount': 0,
-        'replies': [],
-      };
-
-      if (grandParentIndex != null) {
-        comments[grandParentIndex]['replies'][parentIndex]['replies'].add(
-          reply,
-        );
-      } else {
-        comments[parentIndex]['replies'].add(reply);
-      }
-    });
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
+          children: [
+            AppBar(
+              title: const Text('Comments', style: TextStyle(color: Colors.white)),
+              backgroundColor: Colors.grey[900],
+              elevation: 0,
+              automaticallyImplyLeading: false,
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.green),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            Expanded(
+              child: ScrollConfiguration(
+                behavior: NoScrollbarBehavior(),
+                child: ListView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.all(12),
+                  children: _comments.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final comment = entry.value;
+                    return _buildComment(comment, index);
+                  }).toList(),
+                ),
+              ),
+            ),
+            Divider(color: Colors.grey[300]),
+            if (_replyingToIndex != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        'Replying...',
+                        style: TextStyle(color: Colors.black87),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _replyingToIndex = null;
+                          _replyingToParentIndex = null;
+                          _inputController.clear();
+                        });
+                      },
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(color: Colors.redAccent),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _inputController,
+                      style: const TextStyle(color: Colors.black),
+                      decoration: InputDecoration(
+                        hintText: _replyingToIndex != null
+                            ? 'Write a reply...'
+                            : 'Add a comment...',
+                        hintStyle: const TextStyle(color: Colors.black),
+                        filled: true,
+                        fillColor: Colors.grey[100],
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                          horizontal: 16,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.send, color: Colors.green),
+                    onPressed: () {
+                      // In a real app, you would save the comment to Firebase
+                      _inputController.clear();
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildComment(
@@ -1015,7 +1138,6 @@ class _CommentSectionState extends State<CommentSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Main comment row
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1023,13 +1145,13 @@ class _CommentSectionState extends State<CommentSection> {
                 radius: 18,
                 backgroundImage: NetworkImage(comment['avatar']),
               ),
-              SizedBox(width: 10),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      padding: EdgeInsets.all(10),
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(12),
@@ -1039,20 +1161,20 @@ class _CommentSectionState extends State<CommentSection> {
                         children: [
                           Text(
                             comment['user'],
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               color: Colors.black,
                             ),
                           ),
-                          SizedBox(height: 4),
+                          const SizedBox(height: 4),
                           Text(
                             comment['text'],
-                            style: TextStyle(color: Colors.black),
+                            style: const TextStyle(color: Colors.black),
                           ),
                         ],
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
                         GestureDetector(
@@ -1074,7 +1196,7 @@ class _CommentSectionState extends State<CommentSection> {
                                 ),
                               ),
                               if (comment['likeCount'] > 0) ...[
-                                SizedBox(width: 4),
+                                const SizedBox(width: 4),
                                 Text(
                                   '(${comment['likeCount']})',
                                   style: TextStyle(color: Colors.grey[600]),
@@ -1083,7 +1205,7 @@ class _CommentSectionState extends State<CommentSection> {
                             ],
                           ),
                         ),
-                        SizedBox(width: 10),
+                        const SizedBox(width: 10),
                         GestureDetector(
                           onTap: () {
                             setState(() {
@@ -1092,14 +1214,14 @@ class _CommentSectionState extends State<CommentSection> {
                               _inputController.text = '';
                             });
                           },
-                          child: Text(
+                          child: const Text(
                             'Reply',
-                            style: TextStyle(color: Colors.grey[600]),
+                            style: TextStyle(color: Colors.grey),
                           ),
                         ),
-                        SizedBox(width: 10),
+                        const SizedBox(width: 10),
                         Text(
-                          '2h',
+                          _formatTimestamp(comment['timestamp']),
                           style: TextStyle(
                             color: Colors.grey[400],
                             fontSize: 12,
@@ -1137,7 +1259,6 @@ class _CommentSectionState extends State<CommentSection> {
               ),
             ],
           ),
-          // Recursively show replies if expanded
           if (isExpanded)
             ...replies.asMap().entries.map((entry) {
               final i = entry.key;
@@ -1148,110 +1269,48 @@ class _CommentSectionState extends State<CommentSection> {
       ),
     );
   }
+}
+
+class ModalBottomSheet extends StatelessWidget {
+  final BuildContext context;
+  final Widget Function(BuildContext) builder;
+
+  const ModalBottomSheet({
+    required this.context,
+    required this.builder,
+    Key? key,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.white,
-      child: Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: Column(
-          children: [
-            AppBar(
-              title: Text('Comments', style: TextStyle(color: Colors.white)),
-              backgroundColor: Colors.grey[900],
-              elevation: 0,
-              automaticallyImplyLeading: false,
-              actions: [
-                IconButton(
-                  icon: Icon(Icons.close, color: Colors.green),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-            Expanded(
-              child: ScrollConfiguration(
-                behavior: NoScrollbarBehavior(),
-                child: ListView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.all(12),
-                  children: comments.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final comment = entry.value;
-                    return _buildComment(comment, index);
-                  }).toList(),
-                ),
-              ),
-            ),
-            Divider(color: Colors.grey[300]),
-            if (_replyingToIndex != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Text(
-                        'Replying...',
-                        style: TextStyle(color: Colors.black87),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        setState(() {
-                          _replyingToIndex = null;
-                          _replyingToParentIndex = null;
-                          _inputController.clear();
-                        });
-                      },
-                      child: Text(
-                        'Cancel',
-                        style: TextStyle(color: Colors.redAccent),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _inputController,
-                      style: TextStyle(color: Colors.black),
-                      decoration: InputDecoration(
-                        hintText: _replyingToIndex != null
-                            ? 'Write a reply...'
-                            : 'Add a comment...',
-                        hintStyle: TextStyle(color: Colors.black),
-                        filled: true,
-                        fillColor: Colors.grey[100],
-                        contentPadding: EdgeInsets.symmetric(
-                          vertical: 12,
-                          horizontal: 16,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 8),
-                  IconButton(
-                    icon: Icon(Icons.send, color: Colors.green),
-                    onPressed: _submitInput,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+      decoration: const BoxDecoration(color: Colors.white),
+      child: builder(context),
     );
+  }
+}
+
+class NoScrollbarBehavior extends ScrollBehavior {
+  @override
+  Widget buildScrollbar(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    return child;
+  }
+
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    return child;
+  }
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) {
+    return const BouncingScrollPhysics();
   }
 }

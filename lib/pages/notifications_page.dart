@@ -53,6 +53,8 @@ class NotificationsPage extends StatelessWidget {
     },
   ];
 
+  NotificationsPage({super.key});
+
   IconData _getIcon(String type) {
     switch (type) {
       case 'like':

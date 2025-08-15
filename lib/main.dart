@@ -7,8 +7,7 @@ import 'signup_page.dart';      // Signup screen
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Initialize Firebase with the platform-specific config
+  // await MobileAds.instance.initialize();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );

@@ -13,33 +13,40 @@ dependencies:
   video_player: ^2.10.0
   cupertino_icons: ^1.0.8
   image_picker: ^1.0.4
-  camera: ^0.10.5+5
+  camera: ^0.11.2
   path_provider: ^2.1.2
-  permission_handler: ^11.3.1
+  permission_handler: ^12.0.1
   visibility_detector: ^0.4.0+2
-  firebase_core: ^2.24.2
-  firebase_auth: ^4.17.4
-  cloud_firestore: ^4.13.3
-  firebase_storage: ^11.6.4
-  firebase_database: ^10.0.16
+  
+  firebase_core: ^4.0.0
+  firebase_auth: ^6.0.1
+  firebase_database: ^12.0.0
+  firebase_storage: ^13.0.0
+  cloud_firestore: ^6.0.0  
+  
   font_awesome_flutter: ^10.7.0
-  media_kit: ^1.1.8
   media_kit_video: ^1.1.8
-  media_kit_libs_linux: ^1.0.4 # For Linux support 
+  media_kit_libs_linux: ^1.2.1 # For Linux support o
   video_player_web: ^2.0.20
   url_launcher: ^6.1.11
   country_picker: ^2.0.20
   country_code_picker: ^3.0.0
-  shared_preferences: ^2.2.3
-  pay: ^3.2.1
   in_app_purchase: ^3.1.7  # Working version
-  #google_mobile_ads: ^5.1.0
-  
+  shared_preferences: ^2.2.3
+  http: ^1.4.0
+  intl: 0.20.2
+  country_pickers: ^3.0.1 # For country data
+  # google_mobile_ads: ^10.5.0 
+  device_info_plus: ^11.5.0
+  pay: ^3.2.1
+  media_kit: ^1.2.0
+
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
-  flutter_launcher_icons: ^0.13.1
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
@@ -51,4 +58,4 @@ flutter_icons:
   android: true
   ios: true
   image_path: "assets/icon.png"
-  background_color: "#FFFFFF"
+  background_color: "#000000"
