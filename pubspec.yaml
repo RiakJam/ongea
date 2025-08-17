@@ -52,4 +52,4 @@ flutter_icons:
   android: true
   ios: true
   image_path: "assets/icon.png"
-  background_color: "#FFFFFF"
+  background_color: "#000000"

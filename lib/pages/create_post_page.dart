@@ -206,11 +206,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
           }
         }
         postData['imageUrls'] = imageUrls;
-        postData['mediaType'] = _selectedImages.length > 1
-            ? 'multiple_images'
-            : 'single_image';
-      } else {
-        postData['mediaType'] = 'text';
+        postData['mediaType'] = 'image'; // ✅ must match rules
       }
 
       // Push to database - fixed the database reference issue
@@ -262,7 +258,9 @@ class _CreatePostPageState extends State<CreatePostPage> {
                         _videoController!.value.isPlaying
                             ? Icons.pause
                             : Icons.play_arrow,
-                        color: Colors.white.withOpacity(0.8),  // Still works but deprecated
+                        color: Colors.white.withOpacity(
+                          0.8,
+                        ), // Still works but deprecated
                         size: 50,
                       ),
                       onPressed: () {

@@ -7,6 +7,7 @@ import 'package:ongea/services/gift_page.dart';
 // import '../widgets/comment_section.dart';
 import '../widgets/post_card.dart';
 import '../widgets/search_modal.dart';
+import '../widgets/ad_card.dart'; 
 
 class HomeFeedPage extends StatefulWidget {
   @override
@@ -282,7 +283,6 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
       ),
     );
   }
-
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -308,23 +308,44 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
                     child: ListView.builder(
                       controller: _scrollController,
                       physics: const BouncingScrollPhysics(),
-                      itemCount: _posts.length,
+                      itemCount: _posts.length + (_posts.length ~/ 3), // Account for ad cards
                       itemBuilder: (context, index) {
-                        final post = _posts[index];
+                        // Check if we should show an ad (after every 3 posts)
+                        if (index > 0 && index % 4 == 0) {
+                          return Column(
+                            children: [
+                              const SizedBox(height: 8),
+                              AdCard(
+                                adText: "Check out our premium features!",
+                                imageUrl: "https://via.placeholder.com/400x150.png?text=Sponsor+Ad",
+                              ),
+                              const SizedBox(height: 8),
+                              const Divider(height: 1, color: Colors.grey),
+                            ],
+                          );
+                        }
+                        
+                        // Calculate the actual post index accounting for ads
+                        final postIndex = index - (index ~/ 4);
+                        if (postIndex >= _posts.length) {
+                          return const SizedBox.shrink();
+                        }
+                        
+                        final post = _posts[postIndex];
                         return Column(
                           children: [
                             PostCard(
                               post: post,
-                              videoController: _videoControllers[index],
-                              videoKey: _videoKeys[index],
-                              isPlaying: index == _currentlyPlayingIndex,
-                              isUserPaused: _userPausedVideos[index] ?? false,
+                              videoController: _videoControllers[postIndex],
+                              videoKey: _videoKeys[postIndex],
+                              isPlaying: postIndex == _currentlyPlayingIndex,
+                              isUserPaused: _userPausedVideos[postIndex] ?? false,
                               onUserPause: (bool paused) {
                                 setState(() {
-                                  _userPausedVideos[index] = paused;
+                                  _userPausedVideos[postIndex] = paused;
                                   if (paused) {
-                                    _videoControllers[index]?.pause();
-                                    if (_currentlyPlayingIndex == index) {
+                                    _videoControllers[postIndex]?.pause();
+                                    if (_currentlyPlayingIndex == postIndex) {
                                       _currentlyPlayingIndex = null;
                                     }
                                   } else {
