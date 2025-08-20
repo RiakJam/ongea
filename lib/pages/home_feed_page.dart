@@ -2,12 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-// import 'package:intl/intl.dart';
 import 'package:ongea/services/gift_page.dart';
-// import '../widgets/comment_section.dart';
 import '../widgets/post_card.dart';
 import '../widgets/search_modal.dart';
-import '../widgets/ad_card.dart'; 
+import '../widgets/ad_card.dart';
 
 class HomeFeedPage extends StatefulWidget {
   @override
@@ -16,7 +14,7 @@ class HomeFeedPage extends StatefulWidget {
 
 class _HomeFeedPageState extends State<HomeFeedPage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final DatabaseReference _database = FirebaseDatabase.instance.ref('posts');
+  final DatabaseReference _database = FirebaseDatabase.instance.ref();
   final TextEditingController _searchController = TextEditingController();
 
   bool _showSearchModal = false;
@@ -24,12 +22,18 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
   String? _currentUserId;
   String? _currentUserName;
   String? _currentUserAvatar;
-  
+
   List<Map<String, dynamic>> _posts = [];
   List<Map<String, dynamic>> _filteredPosts = [];
   final Map<String, int> _giftCounts = {};
+  final Map<String, int> _commentCounts = {};
+  final Map<String, int> _shareCounts = {};
+  final Map<String, int> _likeCounts = {};
   final Map<String, bool> _hasGifted = {};
-  
+  final Map<String, bool> _likedPosts = {};
+  final Map<String, bool> _savedPosts = {};
+  final Map<String, bool> _followingUsers = {};
+
   final ScrollController _scrollController = ScrollController();
   final Map<int, VideoPlayerController?> _videoControllers = {};
   final Map<int, GlobalKey> _videoKeys = {};
@@ -42,9 +46,8 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
     _scrollController.addListener(_handleScroll);
     _loadCurrentUser();
     _loadPosts();
-    _loadGiftCounts();
   }
-
+// From here 
   void _loadCurrentUser() {
     final user = _auth.currentUser;
     if (user != null) {
@@ -53,51 +56,214 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
         _currentUserName = user.displayName ?? 'Anonymous';
         _currentUserAvatar = user.photoURL ?? 'https://i.pravatar.cc/150?img=1';
       });
+
+      // Load interactions after we have the current user ID
+      _loadInteractions();
     }
   }
 
   void _loadPosts() {
-    _database.orderByChild('timestamp').onValue.listen((event) {
-      final data = event.snapshot.value as Map<dynamic, dynamic>?;
-      if (data != null) {
-        final postsList = data.entries.map((entry) {
-          final post = Map<String, dynamic>.from(entry.value as Map);
-          post['key'] = entry.key;
-          return post;
-        }).toList();
-        
-        postsList.sort((a, b) => (b['timestamp'] ?? 0).compareTo(a['timestamp'] ?? 0));
-        
-        setState(() {
-          _posts = postsList;
-          _initializeVideoControllers();
-        });
-      }
-    });
+    _database
+        .child('posts')
+        .orderByChild('timestamp')
+        .onValue
+        .listen(
+          (event) {
+            try {
+              final data = event.snapshot.value;
+              if (data != null && data is Map<dynamic, dynamic>) {
+                final postsList = <Map<String, dynamic>>[];
+
+                data.forEach((key, value) {
+                  if (value is Map<dynamic, dynamic>) {
+                    final post = Map<String, dynamic>.from(value);
+                    post['key'] = key;
+                    postsList.add(post);
+                  }
+                });
+
+                postsList.sort((a, b) {
+                  final aTimestamp = a['timestamp'] ?? 0;
+                  final bTimestamp = b['timestamp'] ?? 0;
+                  return (bTimestamp is int ? bTimestamp : 0).compareTo(
+                    aTimestamp is int ? aTimestamp : 0,
+                  );
+                });
+
+                setState(() {
+                  _posts = postsList;
+                  _initializeVideoControllers();
+
+                  // Initialize all counts from post data
+                  for (var post in _posts) {
+                    final postKey = post['key'] as String? ?? '';
+
+                    // Initialize comment count
+                    final comments = post['comments'];
+                    _commentCounts[postKey] = comments is Map
+                        ? comments.length
+                        : 0;
+
+                    // Initialize share count
+                    final shares = post['shares'];
+                    _shareCounts[postKey] = (shares is int)
+                        ? shares
+                        : (shares is num ? shares.toInt() : 0);
+
+                    // Initialize like count
+                    final likes = post['likes'];
+                    _likeCounts[postKey] = (likes is int)
+                        ? likes
+                        : (likes is num ? likes.toInt() : 0);
+                  }
+                });
+              } else {
+                // Handle case where there are no posts
+                setState(() {
+                  _posts = [];
+                  _initializeVideoControllers();
+                });
+              }
+            } catch (e) {
+              print('Error loading posts: $e');
+              // Handle error gracefully
+              setState(() {
+                _posts = [];
+                _initializeVideoControllers();
+              });
+            }
+          },
+          onError: (error) {
+            print('Firebase Database Error: $error');
+            // Handle error gracefully
+            setState(() {
+              _posts = [];
+              _initializeVideoControllers();
+            });
+          },
+        );
   }
 
-  void _loadGiftCounts() {
-    _database.child('gifts').onValue.listen((event) {
-      final data = event.snapshot.value as Map<dynamic, dynamic>?;
-      if (data != null) {
-        setState(() {
-          _giftCounts.clear();
-          _hasGifted.clear();
-          data.forEach((postId, gifts) {
-            if (gifts is Map) {
-              int total = 0;
-              gifts.forEach((userId, count) {
-                total += (count as int? ?? 0);
-                if (userId == _currentUserId) {
-                  _hasGifted[postId as String] = true;
-                }
-              });
-              _giftCounts[postId as String] = total;
+  void _loadInteractions() {
+    if (_currentUserId == null) return;
+
+    // Load user likes
+    _database
+        .child('userLikes/$_currentUserId')
+        .onValue
+        .listen(
+          (event) {
+            try {
+              final data = event.snapshot.value;
+              if (data != null && data is Map<dynamic, dynamic>) {
+                setState(() {
+                  data.forEach((postId, value) {
+                    if (postId is String) {
+                      _likedPosts[postId] = true;
+                    }
+                  });
+                });
+              }
+            } catch (e) {
+              print('Error loading likes: $e');
             }
-          });
-        });
-      }
-    });
+          },
+          onError: (error) {
+            print('Error loading likes: $error');
+          },
+        );
+
+    // Load saves
+    _database
+        .child('userSaves/$_currentUserId')
+        .onValue
+        .listen(
+          (event) {
+            try {
+              final data = event.snapshot.value;
+              if (data != null && data is Map<dynamic, dynamic>) {
+                setState(() {
+                  data.forEach((postId, value) {
+                    if (postId is String) {
+                      _savedPosts[postId] = true;
+                    }
+                  });
+                });
+              }
+            } catch (e) {
+              print('Error loading saves: $e');
+            }
+          },
+          onError: (error) {
+            print('Error loading saves: $error');
+          },
+        );
+
+    // Load gifts
+    _database
+        .child('gifts')
+        .onValue
+        .listen(
+          (event) {
+            try {
+              final data = event.snapshot.value;
+              if (data != null && data is Map<dynamic, dynamic>) {
+                setState(() {
+                  _giftCounts.clear();
+                  _hasGifted.clear();
+                  data.forEach((postId, gifts) {
+                    if (postId is String && gifts is Map<dynamic, dynamic>) {
+                      int total = 0;
+                      gifts.forEach((userId, count) {
+                        if (userId == _currentUserId) {
+                          _hasGifted[postId] = true;
+                        }
+                        if (count is int) {
+                          total += count;
+                        } else if (count is num) {
+                          total += count.toInt();
+                        }
+                      });
+                      _giftCounts[postId] = total;
+                    }
+                  });
+                });
+              }
+            } catch (e) {
+              print('Error loading gifts: $e');
+            }
+          },
+          onError: (error) {
+            print('Error loading gifts: $error');
+          },
+        );
+
+    // Load follows
+    _database
+        .child('userFollows/$_currentUserId')
+        .onValue
+        .listen(
+          (event) {
+            try {
+              final data = event.snapshot.value;
+              if (data != null && data is Map<dynamic, dynamic>) {
+                setState(() {
+                  _followingUsers.clear();
+                  data.forEach((followedUserId, value) {
+                    if (followedUserId is String) {
+                      _followingUsers[followedUserId] = true;
+                    }
+                  });
+                });
+              }
+            } catch (e) {
+              print('Error loading follows: $e');
+            }
+          },
+          onError: (error) {
+            print('Error loading follows: $error');
+          },
+        );
   }
 
   void _initializeVideoControllers() {
@@ -109,14 +275,25 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
     _userPausedVideos.clear();
 
     for (var i = 0; i < _posts.length; i++) {
-      if (_posts[i]['mediaType'] == 'video') {
-        _videoControllers[i] = VideoPlayerController.network(_posts[i]['videoUrl'] as String)
-          ..initialize().then((_) {
-            if (mounted) setState(() {});
-            _videoControllers[i]?.setLooping(true);
-          });
-        _videoKeys[i] = GlobalKey();
-        _userPausedVideos[i] = false;
+      final mediaType = _posts[i]['mediaType'];
+      final videoUrl = _posts[i]['videoUrl'];
+
+      if (mediaType == 'video' && videoUrl is String && videoUrl.isNotEmpty) {
+        try {
+          _videoControllers[i] = VideoPlayerController.network(videoUrl)
+            ..initialize()
+                .then((_) {
+                  if (mounted) setState(() {});
+                  _videoControllers[i]?.setLooping(true);
+                })
+                .catchError((error) {
+                  print('Error initializing video controller: $error');
+                });
+          _videoKeys[i] = GlobalKey();
+          _userPausedVideos[i] = false;
+        } catch (e) {
+          print('Error creating video controller: $e');
+        }
       }
     }
   }
@@ -142,10 +319,10 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
 
       final visibleHeight =
           (position.dy + size.height < 0 || position.dy > screenHeight)
-              ? 0.0
-              : (position.dy + size.height > screenHeight
-                  ? screenHeight - (position.dy > 0 ? position.dy : 0)
-                  : (position.dy < 0 ? position.dy + size.height : size.height));
+          ? 0.0
+          : (position.dy + size.height > screenHeight
+                ? screenHeight - (position.dy > 0 ? position.dy : 0)
+                : (position.dy < 0 ? position.dy + size.height : size.height));
 
       final visiblePercentage = visibleHeight / size.height;
 
@@ -157,7 +334,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
 
     if (mostVisibleIndex != null && maxVisiblePercentage > 0.5) {
       if (_currentlyPlayingIndex != mostVisibleIndex &&
-          !_userPausedVideos[mostVisibleIndex]!) {
+          !(_userPausedVideos[mostVisibleIndex] ?? false)) {
         if (_currentlyPlayingIndex != null) {
           _videoControllers[_currentlyPlayingIndex]?.pause();
         }
@@ -167,7 +344,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
         });
       }
     } else if (_currentlyPlayingIndex != null &&
-        !_userPausedVideos[_currentlyPlayingIndex]!) {
+        !(_userPausedVideos[_currentlyPlayingIndex] ?? false)) {
       _videoControllers[_currentlyPlayingIndex]?.pause();
       setState(() {
         _currentlyPlayingIndex = null;
@@ -176,56 +353,185 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
   }
 
   Future<void> _sendGift(String postId) async {
-    if (_currentUserId == null) return;
-    
-    final post = _posts.firstWhere((p) => p['key'] == postId);
-    
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => GiftPage(
-          recipientName: post['userName'] ?? 'User',
-          recipientAvatar: post['userPhoto'] ?? 'https://i.pravatar.cc/150',
-          recipientId: post['userId'],
-          postId: postId,
+    if (_currentUserId == null) {
+      _showLoginRequiredDialog(context, "send gifts");
+      return;
+    }
+
+    try {
+      final postRef = _database.child('posts/$postId');
+      final postSnapshot = await postRef.get();
+      if (!postSnapshot.exists) return;
+
+      final postData = postSnapshot.value;
+      if (postData is! Map<dynamic, dynamic>) return;
+
+      final post = Map<String, dynamic>.from(postData);
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => GiftPage(
+            recipientName: post['userName'] ?? 'User',
+            recipientAvatar: post['userPhoto'] ?? 'https://i.pravatar.cc/150',
+            recipientId: post['userId'],
+            postId: postId,
+          ),
         ),
-      ),
-    );
-    
-    _loadGiftCounts();
+      );
+
+      // The GiftPage will handle the actual gift sending
+      // We just need to refresh our data
+      _loadInteractions();
+    } catch (e) {
+      print('Error sending gift: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error sending gift: $e')));
+    }
   }
 
   Future<void> _toggleLike(String postKey) async {
-    if (_currentUserId == null) return;
+    if (_currentUserId == null) {
+      _showLoginRequiredDialog(context, "like posts");
+      return;
+    }
 
-    final postRef = _database.child(postKey);
-    final postSnapshot = await postRef.get();
-    if (!postSnapshot.exists) return;
+    try {
+      final postRef = _database.child('posts/$postKey');
+      final postSnapshot = await postRef.get();
+      if (!postSnapshot.exists) return;
 
-    final post = Map<String, dynamic>.from(postSnapshot.value as Map);
-    final likes = Map<String, dynamic>.from(post['likes'] ?? {});
-    final isLiked = likes[_currentUserId] == true;
+      final postData = postSnapshot.value;
+      if (postData is! Map<dynamic, dynamic>) return;
 
-    await postRef.update({
-      'likes/$_currentUserId': isLiked ? null : true,
-      'likesCount': isLiked ? (post['likesCount'] ?? 1) - 1 : (post['likesCount'] ?? 0) + 1,
-    });
+      final post = Map<String, dynamic>.from(postData);
+      final currentLikes = (post['likes'] is int ? post['likes'] as int : 0);
+      final isLiked = _likedPosts[postKey] ?? false;
+
+      // Update the post likes count
+      await postRef.update({
+        'likes': isLiked ? currentLikes - 1 : currentLikes + 1,
+      });
+
+      // Update user likes
+      final userLikesRef = _database.child(
+        'userLikes/$_currentUserId/$postKey',
+      );
+      if (isLiked) {
+        await userLikesRef.remove();
+      } else {
+        await userLikesRef.set(true);
+      }
+
+      setState(() {
+        _likedPosts[postKey] = !isLiked;
+        _likeCounts[postKey] = isLiked ? currentLikes - 1 : currentLikes + 1;
+      });
+    } catch (e) {
+      print('Error toggling like: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error toggling like: $e')));
+    }
   }
 
   Future<void> _toggleSave(String postKey) async {
-    if (_currentUserId == null) return;
-
-    final userSavesRef = FirebaseDatabase.instance
-        .ref('userSaves/$_currentUserId/$postKey');
-    
-    final saveSnapshot = await userSavesRef.get();
-    final isSaved = saveSnapshot.exists;
-
-    if (isSaved) {
-      await userSavesRef.remove();
-    } else {
-      await userSavesRef.set(ServerValue.timestamp);
+    if (_currentUserId == null) {
+      _showLoginRequiredDialog(context, "save posts");
+      return;
     }
+
+    try {
+      final userSavesRef = _database.child(
+        'userSaves/$_currentUserId/$postKey',
+      );
+      final saveSnapshot = await userSavesRef.get();
+      final isSaved = saveSnapshot.exists && saveSnapshot.value == true;
+
+      if (isSaved) {
+        await userSavesRef.remove();
+      } else {
+        await userSavesRef.set(true);
+      }
+
+      setState(() {
+        _savedPosts[postKey] = !isSaved;
+      });
+    } catch (e) {
+      print('Error toggling save: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error toggling save: $e')));
+    }
+  }
+
+  Future<void> _toggleFollow(String userId) async {
+    if (_currentUserId == null) {
+      _showLoginRequiredDialog(context, "follow users");
+      return;
+    }
+
+    if (userId == _currentUserId) return;
+
+    try {
+      final userFollowsRef = _database.child(
+        'userFollows/$_currentUserId/$userId',
+      );
+      final followSnapshot = await userFollowsRef.get();
+      final isFollowing = followSnapshot.exists;
+
+      if (isFollowing) {
+        await userFollowsRef.remove();
+        // Also decrement follower count for the user being unfollowed
+        await _database
+            .child('users/$userId/followersCount')
+            .set(ServerValue.increment(-1));
+        // Decrement following count for current user
+        await _database
+            .child('users/$_currentUserId/followingCount')
+            .set(ServerValue.increment(-1));
+      } else {
+        await userFollowsRef.set(ServerValue.timestamp);
+        // Increment follower count for the user being followed
+        await _database
+            .child('users/$userId/followersCount')
+            .set(ServerValue.increment(1));
+        // Increment following count for current user
+        await _database
+            .child('users/$_currentUserId/followingCount')
+            .set(ServerValue.increment(1));
+      }
+
+      setState(() {
+        _followingUsers[userId] = !isFollowing;
+      });
+    } catch (e) {
+      print('Error toggling follow: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error toggling follow: $e')));
+    }
+  }
+
+  void _showLoginRequiredDialog(BuildContext context, String action) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Login Required"),
+          content: Text("You need to be logged in to $action."),
+          actions: <Widget>[
+            TextButton(
+              child: Text("OK"),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _openSearchModal() {
@@ -268,21 +574,30 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
           Row(
             children: [
               CircleAvatar(
-                backgroundImage: NetworkImage(_currentUserAvatar ?? 'https://i.pravatar.cc/150?img=1'),
+                backgroundImage: NetworkImage(
+                  _currentUserAvatar ?? 'https://i.pravatar.cc/150?img=1',
+                ),
                 radius: 20,
               ),
               const SizedBox(width: 10),
               Text(
                 _currentUserName ?? 'Loading...',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
               ),
             ],
           ),
-          IconButton(icon: const Icon(Icons.search), onPressed: _openSearchModal),
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: _openSearchModal,
+          ),
         ],
       ),
     );
   }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -304,11 +619,16 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
                     onRefresh: () async {
                       await Future.delayed(const Duration(seconds: 1));
                       _loadPosts();
+                      if (_currentUserId != null) {
+                        _loadInteractions();
+                      }
                     },
                     child: ListView.builder(
                       controller: _scrollController,
                       physics: const BouncingScrollPhysics(),
-                      itemCount: _posts.length + (_posts.length ~/ 3), // Account for ad cards
+                      itemCount:
+                          _posts.length +
+                          (_posts.length ~/ 3), // Account for ad cards
                       itemBuilder: (context, index) {
                         // Check if we should show an ad (after every 3 posts)
                         if (index > 0 && index % 4 == 0) {
@@ -317,21 +637,26 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
                               const SizedBox(height: 8),
                               AdCard(
                                 adText: "Check out our premium features!",
-                                imageUrl: "https://via.placeholder.com/400x150.png?text=Sponsor+Ad",
+                                imageUrl:
+                                    "https://via.placeholder.com/400x150.png?text=Sponsor+Ad",
                               ),
                               const SizedBox(height: 8),
                               const Divider(height: 1, color: Colors.grey),
                             ],
                           );
                         }
-                        
+
                         // Calculate the actual post index accounting for ads
                         final postIndex = index - (index ~/ 4);
                         if (postIndex >= _posts.length) {
                           return const SizedBox.shrink();
                         }
-                        
+
                         final post = _posts[postIndex];
+                        final postKey = post['key'] as String? ?? '';
+                        final isFollowing =
+                            _followingUsers[post['userId']] ?? false;
+
                         return Column(
                           children: [
                             PostCard(
@@ -339,7 +664,8 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
                               videoController: _videoControllers[postIndex],
                               videoKey: _videoKeys[postIndex],
                               isPlaying: postIndex == _currentlyPlayingIndex,
-                              isUserPaused: _userPausedVideos[postIndex] ?? false,
+                              isUserPaused:
+                                  _userPausedVideos[postIndex] ?? false,
                               onUserPause: (bool paused) {
                                 setState(() {
                                   _userPausedVideos[postIndex] = paused;
@@ -354,11 +680,19 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
                                 });
                               },
                               currentUserId: _currentUserId,
+                              isLiked: _likedPosts[postKey] ?? false,
+                              isSaved: _savedPosts[postKey] ?? false,
+                              isFollowing: isFollowing,
                               onLike: (String postKey) => _toggleLike(postKey),
                               onSave: (String postKey) => _toggleSave(postKey),
                               onGift: (String postKey) => _sendGift(postKey),
-                              giftCount: _giftCounts[post['key']] ?? 0,
-                              hasGifted: _hasGifted[post['key']] ?? false,
+                              onFollow: (String userId) =>
+                                  _toggleFollow(userId),
+                              giftCount: _giftCounts[postKey] ?? 0,
+                              commentCount: _commentCounts[postKey] ?? 0,
+                              shareCount: _shareCounts[postKey] ?? 0,
+                              likeCount: _likeCounts[postKey] ?? 0,
+                              hasGifted: _hasGifted[postKey] ?? false,
                             ),
                             const SizedBox(height: 8),
                             const Divider(height: 1, color: Colors.grey),
@@ -371,7 +705,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
               ),
             ],
           ),
-          if (_showSearchModal) 
+          if (_showSearchModal)
             SearchModal(
               context: context,
               searchController: _searchController,
@@ -383,9 +717,16 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
               currentlyPlayingIndex: _currentlyPlayingIndex,
               userPausedVideos: _userPausedVideos,
               currentUserId: _currentUserId,
+              likedPosts: _likedPosts,
+              savedPosts: _savedPosts,
+              followingUsers: _followingUsers,
+              commentCounts: _commentCounts,
+              shareCounts: _shareCounts,
+              likeCounts: _likeCounts,
               onLike: _toggleLike,
               onSave: _toggleSave,
               onGift: _sendGift,
+              onFollow: _toggleFollow,
               giftCounts: _giftCounts,
               hasGifted: _hasGifted,
               onClose: _closeSearchModal,

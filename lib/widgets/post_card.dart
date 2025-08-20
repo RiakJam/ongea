@@ -15,11 +15,18 @@ class PostCard extends StatelessWidget {
   final bool isUserPaused;
   final Function(bool) onUserPause;
   final String? currentUserId;
+  final bool isLiked;
+  final bool isSaved;
+  final bool isFollowing;
   final Function(String) onLike;
   final Function(String) onSave;
   final Function(String) onGift;
+  final Function(String) onFollow;
   final int giftCount;
+  final int commentCount;
+  final int shareCount;
   final bool hasGifted;
+  final int likeCount; // Add this parameter
 
   const PostCard({
     required this.post,
@@ -29,25 +36,27 @@ class PostCard extends StatelessWidget {
     this.isUserPaused = false,
     required this.onUserPause,
     this.currentUserId,
+    this.isLiked = false,
+    this.isSaved = false,
+    this.isFollowing = false,
     required this.onLike,
     required this.onSave,
     required this.onGift,
-    required this.giftCount,
-    required this.hasGifted,
-  });
+    required this.onFollow,
+    this.giftCount = 0,
+    this.commentCount = 0,
+    this.shareCount = 0,
+    this.hasGifted = false,
+    this.likeCount = 0, // Initialize with default value
+    Key? key,
+  }) : super(key: key);
 
-  bool get _isLiked {
-    if (currentUserId == null) return false;
-    final likes = post['likes'] is Map ? post['likes'] as Map : {};
-    return likes[currentUserId] == true;
-  }
-
-  int get _likeCount {
-    return post['likesCount'] as int? ?? 0;
-  }
+  // Remove the _likeCount getter since we're now passing likeCount as a parameter
+  // int get _likeCount {
+  //   return post['likesCount'] as int? ?? 0;
+  // }
 
   String _formatTimestamp(int timestamp) {
-    if (timestamp == null) return '';
     final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
     return DateFormat('MMM d, y').format(date);
   }
@@ -77,7 +86,7 @@ class PostCard extends StatelessWidget {
               onUserPause: onUserPause,
             ),
           const SizedBox(height: 10),
-          _buildPostFooter(context), // Pass context here
+          _buildPostFooter(context),
         ],
       ),
     );
@@ -102,9 +111,15 @@ class PostCard extends StatelessWidget {
           ),
         ),
         TextButton(
-          onPressed: () {},
-          style: TextButton.styleFrom(foregroundColor: Colors.red),
-          child: const Text('Follow'),
+          onPressed: () {
+            if (post['userId'] != null) {
+              onFollow(post['userId']);
+            }
+          },
+          style: TextButton.styleFrom(
+            foregroundColor: isFollowing ? Colors.grey : Colors.red,
+          ),
+          child: Text(isFollowing ? 'Following' : 'Follow'),
         ),
       ],
     );
@@ -117,48 +132,71 @@ class PostCard extends StatelessWidget {
         Row(
           children: [
             // Like button and count
-            IconButton(
-              icon: Icon(
-                _isLiked ? Icons.favorite : Icons.favorite_border,
-                color: _isLiked ? Colors.red : Colors.black,
-              ),
-              onPressed: () => onLike(post['key']),
+            Row(
+              children: [
+                IconButton(
+                  icon: Icon(
+                    isLiked ? Icons.favorite : Icons.favorite_border,
+                    color: isLiked ? Colors.blue : Colors.black,
+                  ),
+                  onPressed: () => onLike(post['key']),
+                ),
+                Text(
+                  '$likeCount', // Use the passed likeCount parameter
+                  style: const TextStyle(color: Colors.black),
+                ),
+              ],
             ),
-            Text('$_likeCount', style: const TextStyle(color: Colors.black)),
 
             // Comment button and count
-            IconButton(
-              icon: const Icon(Icons.comment, color: Colors.black),
-              onPressed: () => _showComments(context),
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.comment, color: Colors.black),
+                  onPressed: () => _showComments(context),
+                ),
+                Text('$commentCount', style: const TextStyle(color: Colors.black)),
+              ],
             ),
-            const Text('0', style: TextStyle(color: Colors.black)),
 
-            // Share button
-            IconButton(
-              icon: const Icon(Icons.share, color: Colors.black),
-              onPressed: () {
-                _showShareOptions(context);
-                // Add your share functionality here
-                // Example: _shareToDatabase(post['key']);
-              },
+            // Share button and count
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.share, color: Colors.black),
+                  onPressed: () {
+                    _showShareOptions(context);
+                  },
+                ),
+                Text('$shareCount', style: const TextStyle(color: Colors.black)),
+              ],
             ),
 
             // Gift button and count
-            IconButton(
-              icon: Icon(
-                hasGifted ? Icons.card_giftcard : Icons.card_giftcard_outlined,
-                color: hasGifted ? Colors.pink : Colors.black,
-              ),
-              onPressed: () => onGift(post['key']),
+            Row(
+              children: [
+                IconButton(
+                  icon: Icon(
+                    hasGifted
+                        ? Icons.card_giftcard
+                        : Icons.card_giftcard_outlined,
+                    color: hasGifted ? Colors.pink : Colors.black,
+                  ),
+                  onPressed: () => onGift(post['key']),
+                ),
+                Text('$giftCount', style: const TextStyle(color: Colors.black)),
+              ],
             ),
-            Text('$giftCount', style: const TextStyle(color: Colors.black)),
 
             // Spacer to push bookmark to the end
             const Spacer(),
 
             // Bookmark button
             IconButton(
-              icon: const Icon(Icons.bookmark_border, color: Colors.black),
+              icon: Icon(
+                isSaved ? Icons.bookmark : Icons.bookmark_border,
+                color: isSaved ? Colors.blue : Colors.black,
+              ),
               onPressed: () => onSave(post['key']),
             ),
           ],
@@ -187,90 +225,116 @@ class PostCard extends StatelessWidget {
   }
 
   void _showShareOptions(BuildContext context) {
-    final platforms = [
+    final List<Map<String, dynamic>> platforms = [
       {
         'icon': FontAwesomeIcons.link,
         'name': 'Copy Link',
         'color': Colors.blue,
-      },
-      {
-        'icon': FontAwesomeIcons.facebookMessenger,
-        'name': 'Messages',
-        'color': Color(0xFF00B2FF),
-      },
-      {
-        'icon': FontAwesomeIcons.envelope,
-        'name': 'Email',
-        'color': Colors.grey,
+        'onTap': () => _copyLinkToClipboard(context),
       },
       {
         'icon': FontAwesomeIcons.facebook,
         'name': 'Facebook',
         'color': Color(0xFF1877F2),
+        'onTap': () => _showNotImplementedMessage(context, 'Facebook'),
       },
       {
         'icon': FontAwesomeIcons.whatsapp,
         'name': 'WhatsApp',
         'color': Color(0xFF25D366),
+        'onTap': () => _showNotImplementedMessage(context, 'WhatsApp'),
       },
     ];
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.grey[900],
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+      ),
       builder: (_) => SizedBox(
         height: 160,
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.all(12.0),
+              padding: const EdgeInsets.all(16.0),
               child: Text(
                 'Share to',
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: Colors.white,
+                  color: Colors.black87,
                 ),
               ),
             ),
             Expanded(
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: platforms.length,
-                itemBuilder: (context, index) {
-                  final platform = platforms[index];
-                  return Container(
-                    width: 80,
-                    padding: const EdgeInsets.all(8),
-                    child: Column(
-                      children: [
-                        CircleAvatar(
-                          backgroundColor:
-                              platform['color'] as Color? ??
-                              Colors.grey.withOpacity(0.2),
-                          child: Icon(
-                            platform['icon'] as IconData,
-                            color: Colors.white,
-                          ),
+              child: Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: platforms.map((platform) {
+                    return GestureDetector(
+                      onTap: () {
+                        if (platform['onTap'] != null) {
+                          platform['onTap']();
+                        }
+                      },
+                      child: Container(
+                        width: 80,
+                        padding: const EdgeInsets.all(8),
+                        child: Column(
+                          children: [
+                            CircleAvatar(
+                              backgroundColor:
+                                  platform['color'] as Color? ?? Colors.grey[300],
+                              radius: 24,
+                              child: Icon(
+                                platform['icon'] as IconData,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              platform['name'] as String,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.black87,
+                              ),
+                              textAlign: TextAlign.center,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          platform['name'] as String,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.white,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  );
-                },
+                      ),
+                    );
+                  }).toList(),
+                ),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _copyLinkToClipboard(BuildContext context) {
+    Navigator.pop(context);
+    final String postUrl = 'https://yourapp.com/post/${post['key']}';
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Link copied to clipboard: $postUrl'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _showNotImplementedMessage(BuildContext context, String featureName) {
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$featureName sharing will be implemented soon!'),
+        duration: Duration(seconds: 2),
       ),
     );
   }
