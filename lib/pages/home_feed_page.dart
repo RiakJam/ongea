@@ -3,6 +3,7 @@ import 'package:video_player/video_player.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:ongea/services/gift_page.dart';
+import 'dart:async';
 import '../widgets/post_card.dart';
 import '../widgets/search_modal.dart';
 import '../widgets/ad_card.dart';
@@ -40,24 +41,62 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
   int? _currentlyPlayingIndex;
   final Map<int, bool> _userPausedVideos = {};
 
+  // Add auth state listener
+  StreamSubscription<User?>? _authStateSubscription;
+
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_handleScroll);
-    _loadCurrentUser();
-    _loadPosts();
+    
+    // Listen to auth state changes
+    _authStateSubscription = _auth.authStateChanges().listen((User? user) {
+      if (user != null) {
+        // User is signed in
+        _loadCurrentUser();
+      } else {
+        // User is signed out
+        setState(() {
+          _currentUserId = null;
+          _currentUserName = null;
+          _currentUserAvatar = null;
+        });
+        // Still load posts but not interactions
+        _loadPosts();
+      }
+    });
   }
-// From here 
+
   void _loadCurrentUser() {
     final user = _auth.currentUser;
     if (user != null) {
       setState(() {
         _currentUserId = user.uid;
-        _currentUserName = user.displayName ?? 'Anonymous';
-        _currentUserAvatar = user.photoURL ?? 'https://i.pravatar.cc/150?img=1';
       });
-
-      // Load interactions after we have the current user ID
+      
+      // Load user profile data from Firebase
+      _database.child('users/${user.uid}').once().then((DatabaseEvent event) {
+        if (event.snapshot.value != null) {
+          final userData = Map<String, dynamic>.from(event.snapshot.value as Map);
+          setState(() {
+            _currentUserName = userData['name'] ?? user.displayName ?? 'Guest';
+            _currentUserAvatar = userData['photoURL'] ?? user.photoURL ?? 'https://i.pravatar.cc/150?img=1';
+          });
+        } else {
+          setState(() {
+            _currentUserName = user.displayName ?? 'Guest';
+            _currentUserAvatar = user.photoURL ?? 'https://i.pravatar.cc/150?img=1';
+          });
+        }
+      }).catchError((error) {
+        setState(() {
+          _currentUserName = user.displayName ?? 'Anonymous';
+          _currentUserAvatar = user.photoURL ?? 'https://i.pravatar.cc/150?img=1';
+        });
+      });
+      
+      // Load posts and interactions after we have the current user ID
+      _loadPosts();
       _loadInteractions();
     }
   }
@@ -554,7 +593,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
       _searchQuery = query;
       if (query.isNotEmpty) {
         _filteredPosts = _posts.where((post) {
-          final user = post['userName'] as String? ?? 'Anonymous';
+          final user = post['userName'] as String? ?? 'Guest';
           final text = post['caption'] as String? ?? '';
           return user.toLowerCase().contains(query.toLowerCase()) ||
               text.toLowerCase().contains(query.toLowerCase());
@@ -581,7 +620,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
               ),
               const SizedBox(width: 10),
               Text(
-                _currentUserName ?? 'Loading...',
+                _currentUserName ?? 'Guest',
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
@@ -739,6 +778,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
 
   @override
   void dispose() {
+    _authStateSubscription?.cancel();
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
     _searchController.dispose();

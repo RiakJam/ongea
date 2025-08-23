@@ -148,92 +148,96 @@ class _CreatePostPageState extends State<CreatePostPage> {
   }
 
   Future<void> _submitPost() async {
-    if (_captionController.text.isEmpty &&
-        _selectedVideo == null &&
-        _selectedImages.isEmpty) {
-      setState(
-        () => _errorMessage = "Please add text, image, or video to post.",
-      );
-      return;
+  if (_captionController.text.isEmpty &&
+      _selectedVideo == null &&
+      _selectedImages.isEmpty) {
+    setState(
+      () => _errorMessage = "Please add text, image, or video to post.",
+    );
+    return;
+  }
+
+  setState(() {
+    _isUploading = true;
+    _errorMessage = null;
+    _successMessage = null;
+  });
+
+  try {
+    final user = _auth.currentUser;
+    if (user == null) throw Exception("User not logged in");
+
+    // Prepare post data
+    Map<String, dynamic> postData = {
+      'userId': user.uid,
+      'userEmail': user.email,
+      'userName': user.displayName ?? 'Anonymous',
+      'userPhoto': user.photoURL,
+      'caption': _captionController.text.trim(),
+      'timestamp': ServerValue.timestamp,
+      'likes': 0,
+      'comments': 0,
+      'saves': 0,
+      'shares': 0,
+      'status': 'active',
+    };
+
+    // Handle video upload
+    if (_selectedVideo != null) {
+      String? videoUrl = await _uploadMedia(_selectedVideo!, 'videos');
+      if (videoUrl != null) {
+        postData['videoUrl'] = videoUrl;
+        postData['mediaType'] = 'video';
+        postData['duration'] =
+            _videoController?.value.duration.inSeconds ?? 0;
+      } else {
+        throw Exception("Failed to upload video");
+      }
     }
+    // Handle image uploads
+    else if (_selectedImages.isNotEmpty) {
+      List<String> imageUrls = [];
+      for (var image in _selectedImages) {
+        String? imageUrl = await _uploadMedia(image, 'images');
+        if (imageUrl != null) {
+          imageUrls.add(imageUrl);
+        } else {
+          throw Exception("Failed to upload images");
+        }
+      }
+      postData['imageUrls'] = imageUrls;
+      postData['mediaType'] = 'image'; // ✅ This must match your rules
+    } else {
+      // Text-only post
+      postData['mediaType'] = 'text';
+    }
+
+    // Push to database - using push() to generate a unique key
+    DatabaseReference newPostRef = _database.push();
+    await newPostRef.set(postData);
 
     setState(() {
-      _isUploading = true;
-      _errorMessage = null;
-      _successMessage = null;
+      _isUploading = false;
+      _successMessage = "Post created successfully!";
     });
 
-    try {
-      final user = _auth.currentUser;
-      if (user == null) throw Exception("User not logged in");
+    // Clear form after successful post
+    _captionController.clear();
+    _selectedImages.clear();
+    _selectedVideo = null;
+    _disposeVideo();
 
-      // Prepare post data
-      Map<String, dynamic> postData = {
-        'userId': user.uid,
-        'userEmail': user.email,
-        'userName': user.displayName ?? 'Anonymous',
-        'userPhoto': user.photoURL,
-        'caption': _captionController.text.trim(),
-        'timestamp': ServerValue.timestamp,
-        'likes': 0,
-        'comments': 0,
-        'saves': 0,
-        'shares': 0,
-        'status': 'active',
-      };
-
-      // Handle video upload
-      if (_selectedVideo != null) {
-        String? videoUrl = await _uploadMedia(_selectedVideo!, 'videos');
-        if (videoUrl != null) {
-          postData['videoUrl'] = videoUrl;
-          postData['mediaType'] = 'video';
-          postData['duration'] =
-              _videoController?.value.duration.inSeconds ?? 0;
-        } else {
-          throw Exception("Failed to upload video");
-        }
-      }
-      // Handle image uploads
-      else if (_selectedImages.isNotEmpty) {
-        List<String> imageUrls = [];
-        for (var image in _selectedImages) {
-          String? imageUrl = await _uploadMedia(image, 'images');
-          if (imageUrl != null) {
-            imageUrls.add(imageUrl);
-          } else {
-            throw Exception("Failed to upload images");
-          }
-        }
-        postData['imageUrls'] = imageUrls;
-        postData['mediaType'] = 'image'; // ✅ must match rules
-      }
-
-      // Push to database - fixed the database reference issue
-      await _database.push().set(postData);
-
-      setState(() {
-        _isUploading = false;
-        _successMessage = "Post created successfully!";
-      });
-
-      // Clear form after successful post
-      _captionController.clear();
-      _selectedImages.clear();
-      _selectedVideo = null;
-      _disposeVideo();
-
-      // Navigate back after a delay
-      await Future.delayed(const Duration(seconds: 2));
-      if (mounted) Navigator.pop(context);
-    } catch (e) {
-      setState(() {
-        _isUploading = false;
-        _errorMessage =
-            "Failed to post: ${e.toString().replaceAll('Exception: ', '')}";
-      });
-    }
+    // Navigate back after a delay
+    await Future.delayed(const Duration(seconds: 2));
+    if (mounted) Navigator.pop(context);
+  } catch (e) {
+    setState(() {
+      _isUploading = false;
+      _errorMessage =
+          "Failed to post: ${e.toString().replaceAll('Exception: ', '')}";
+    });
   }
+}
 
   @override
   void dispose() {
