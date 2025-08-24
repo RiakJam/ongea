@@ -6,6 +6,8 @@ import 'video_post.dart';
 import 'image_post.dart';
 import 'text_post.dart';
 import 'comment_section.dart';
+import '../pages/user_profile_page.dart'; // Add this import
+
 
 class PostCard extends StatelessWidget {
   final Map<String, dynamic> post;
@@ -18,6 +20,7 @@ class PostCard extends StatelessWidget {
   final bool isLiked;
   final bool isSaved;
   final bool isFollowing;
+  final bool showFollowButton;
   final Function(String) onLike;
   final Function(String) onSave;
   final Function(String) onGift;
@@ -26,7 +29,7 @@ class PostCard extends StatelessWidget {
   final int commentCount;
   final int shareCount;
   final bool hasGifted;
-  final int likeCount; // Add this parameter
+  final int likeCount;
 
   const PostCard({
     required this.post,
@@ -39,6 +42,7 @@ class PostCard extends StatelessWidget {
     this.isLiked = false,
     this.isSaved = false,
     this.isFollowing = false,
+    this.showFollowButton = true,
     required this.onLike,
     required this.onSave,
     required this.onGift,
@@ -47,14 +51,9 @@ class PostCard extends StatelessWidget {
     this.commentCount = 0,
     this.shareCount = 0,
     this.hasGifted = false,
-    this.likeCount = 0, // Initialize with default value
+    this.likeCount = 0,
     Key? key,
   }) : super(key: key);
-
-  // Remove the _likeCount getter since we're now passing likeCount as a parameter
-  // int get _likeCount {
-  //   return post['likesCount'] as int? ?? 0;
-  // }
 
   String _formatTimestamp(int timestamp) {
     final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
@@ -69,12 +68,12 @@ class PostCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildPostHeader(),
+          _buildPostHeader(context),
           const SizedBox(height: 10),
           if (post['caption'] != null && post['caption'].toString().isNotEmpty)
             TextPost(text: post['caption'].toString()),
           const SizedBox(height: 10),
-          if (post['mediaType'] == 'single_image' ||
+          if (post['mediaType'] == 'image' ||
               post['mediaType'] == 'multiple_images')
             ImagePost(post: post),
           if (post['mediaType'] == 'video')
@@ -92,35 +91,69 @@ class PostCard extends StatelessWidget {
     );
   }
 
-  Widget _buildPostHeader() {
+  Widget _buildPostHeader(BuildContext context) {
     return Row(
       children: [
-        CircleAvatar(
-          backgroundImage: NetworkImage(
-            post['userPhoto'] ?? 'https://i.pravatar.cc/150',
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            post['userName'] ?? 'Anonymous',
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.black,
+        // Make the avatar clickable
+        GestureDetector(
+          onTap: () {
+            if (post['userId'] != null) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => UserProfilePage(
+                    userId: post['userId'],
+                    currentUserId: currentUserId,
+                  ),
+                ),
+              );
+            }
+          },
+          child: CircleAvatar(
+            backgroundImage: NetworkImage(
+              post['userPhoto'] ?? 'https://i.pravatar.cc/150',
             ),
           ),
         ),
-        TextButton(
-          onPressed: () {
-            if (post['userId'] != null) {
-              onFollow(post['userId']);
-            }
-          },
-          style: TextButton.styleFrom(
-            foregroundColor: isFollowing ? Colors.grey : Colors.red,
+        const SizedBox(width: 10),
+        // Make the username clickable
+        Expanded(
+          child: GestureDetector(
+            onTap: () {
+              if (post['userId'] != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => UserProfilePage(
+                      userId: post['userId'],
+                      currentUserId: currentUserId,
+                    ),
+                  ),
+                );
+              }
+            },
+            child: Text(
+              post['userName'] ?? 'Anonymous',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+              ),
+            ),
           ),
-          child: Text(isFollowing ? 'Following' : 'Follow'),
         ),
+        // Only show follow button if showFollowButton is true
+        if (showFollowButton)
+          TextButton(
+            onPressed: () {
+              if (post['userId'] != null) {
+                onFollow(post['userId']);
+              }
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: isFollowing ? Colors.grey : Colors.blue,
+            ),
+            child: Text(isFollowing ? 'Following' : 'Follow'),
+          ),
       ],
     );
   }
@@ -142,7 +175,7 @@ class PostCard extends StatelessWidget {
                   onPressed: () => onLike(post['key']),
                 ),
                 Text(
-                  '$likeCount', // Use the passed likeCount parameter
+                  '$likeCount',
                   style: const TextStyle(color: Colors.black),
                 ),
               ],
@@ -155,7 +188,10 @@ class PostCard extends StatelessWidget {
                   icon: const Icon(Icons.comment, color: Colors.black),
                   onPressed: () => _showComments(context),
                 ),
-                Text('$commentCount', style: const TextStyle(color: Colors.black)),
+                Text(
+                  '$commentCount',
+                  style: const TextStyle(color: Colors.black),
+                ),
               ],
             ),
 
@@ -168,7 +204,10 @@ class PostCard extends StatelessWidget {
                     _showShareOptions(context);
                   },
                 ),
-                Text('$shareCount', style: const TextStyle(color: Colors.black)),
+                Text(
+                  '$shareCount',
+                  style: const TextStyle(color: Colors.black),
+                ),
               ],
             ),
 
@@ -285,7 +324,8 @@ class PostCard extends StatelessWidget {
                           children: [
                             CircleAvatar(
                               backgroundColor:
-                                  platform['color'] as Color? ?? Colors.grey[300],
+                                  platform['color'] as Color? ??
+                                  Colors.grey[300],
                               radius: 24,
                               child: Icon(
                                 platform['icon'] as IconData,
@@ -320,7 +360,7 @@ class PostCard extends StatelessWidget {
   void _copyLinkToClipboard(BuildContext context) {
     Navigator.pop(context);
     final String postUrl = 'https://yourapp.com/post/${post['key']}';
-    
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Link copied to clipboard: $postUrl'),

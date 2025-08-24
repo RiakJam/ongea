@@ -4,27 +4,27 @@ import 'chat_detail_page.dart';
 class ConversationsListPage extends StatelessWidget {
   final List<Map<String, dynamic>> conversations = [
     {
-      'id': '1',
-      'name': 'John Doe',
-      'avatar': 'https://i.pravatar.cc/150?img=1',
+      'recipientId': '1',
+      'recipientName': 'John Doe',
+      'recipientAvatar': 'https://i.pravatar.cc/150?img=1',
       'lastMessage': 'Hey, how are you doing?',
       'time': '10:30 AM',
       'unreadCount': 2,
       'isOnline': true,
     },
     {
-      'id': '2',
-      'name': 'Jane Smith',
-      'avatar': 'https://i.pravatar.cc/150?img=2',
+      'recipientId': '2',
+      'recipientName': 'Jane Smith',
+      'recipientAvatar': 'https://i.pravatar.cc/150?img=2',
       'lastMessage': 'Meeting at 3pm tomorrow',
       'time': '9:45 AM',
       'unreadCount': 0,
       'isOnline': false,
     },
     {
-      'id': '3',
-      'name': 'Mike Johnson',
-      'avatar': 'https://i.pravatar.cc/150?img=3',
+      'recipientId': '3',
+      'recipientName': 'Mike Johnson',
+      'recipientAvatar': 'https://i.pravatar.cc/150?img=3',
       'lastMessage': 'Did you see the latest update?',
       'time': 'Yesterday',
       'unreadCount': 5,
@@ -48,7 +48,7 @@ class ConversationsListPage extends StatelessWidget {
         ],
       ),
       body: Container(
-        color: Colors.white, // Set ListView background to white
+        color: Colors.white,
         child: ListView.builder(
           itemCount: conversations.length,
           itemBuilder: (context, index) {
@@ -57,7 +57,7 @@ class ConversationsListPage extends StatelessWidget {
               leading: Stack(
                 children: [
                   CircleAvatar(
-                    backgroundImage: NetworkImage(conversation['avatar']),
+                    backgroundImage: NetworkImage(conversation['recipientAvatar']),
                     radius: 24,
                   ),
                   if (conversation['isOnline'])
@@ -77,7 +77,7 @@ class ConversationsListPage extends StatelessWidget {
                 ],
               ),
               title: Text(
-                conversation['name'],
+                conversation['recipientName'],
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   color: Colors.black,
@@ -115,8 +115,11 @@ class ConversationsListPage extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) =>
-                        ChatDetailPage(conversation: conversation),
+                    builder: (context) => ChatDetailPage(
+                      recipientId: conversation['recipientId'],
+                      recipientName: conversation['recipientName'],
+                      recipientAvatar: conversation['recipientAvatar'],
+                    ),
                   ),
                 );
               },

@@ -23,7 +23,8 @@ class RutoApp extends StatelessWidget {
     return MaterialApp(
       theme: ThemeData.light(),
       debugShowCheckedModeBanner: false,
-      initialRoute: '/login',
+      // initialRoute: '/login',
+      home: MyApp(), // 👈 Directly loads home page
       routes: {
         '/login': (context) => LoginPage(),
         '/signup': (context) => SignupPage(),

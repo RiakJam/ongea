@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'shop_page.dart';
-import 'saved_page.dart'; // We'll create this
-import 'edit_profile_page.dart'; // We'll create this
 
 class AccountPage extends StatefulWidget {
   const AccountPage({super.key});

@@ -24,7 +24,7 @@ class SearchModal extends StatelessWidget {
   final Map<String, bool> hasGifted;
   final Map<String, int> commentCounts;
   final Map<String, int> shareCounts;
-  final Map<String, int> likeCounts; // Add this parameter
+  final Map<String, int> likeCounts;
   final VoidCallback onClose;
   final Function(String) onUpdateSearchQuery;
 
@@ -50,7 +50,7 @@ class SearchModal extends StatelessWidget {
     required this.hasGifted,
     required this.commentCounts,
     required this.shareCounts,
-    required this.likeCounts, // Add this parameter
+    required this.likeCounts,
     required this.onClose,
     required this.onUpdateSearchQuery,
     Key? key,
@@ -123,6 +123,9 @@ class SearchModal extends StatelessWidget {
                           if (originalIndex == -1) return const SizedBox.shrink();
 
                           final isFollowing = followingUsers[post['userId']] ?? false;
+                          
+                          // Check if this is the current user's own post
+                          final isOwnPost = currentUserId != null && post['userId'] == currentUserId;
 
                           return Column(
                             children: [
@@ -142,6 +145,8 @@ class SearchModal extends StatelessWidget {
                                 isLiked: likedPosts[post['key']] ?? false,
                                 isSaved: savedPosts[post['key']] ?? false,
                                 isFollowing: isFollowing,
+                                // Hide follow button on own posts
+                                showFollowButton: !isOwnPost,
                                 onLike: onLike,
                                 onSave: onSave,
                                 onGift: onGift,
@@ -150,7 +155,7 @@ class SearchModal extends StatelessWidget {
                                 hasGifted: hasGifted[post['key']] ?? false,
                                 commentCount: commentCounts[post['key']] ?? 0,
                                 shareCount: shareCounts[post['key']] ?? 0,
-                                likeCount: likeCounts[post['key']] ?? 0, // Add this line
+                                likeCount: likeCounts[post['key']] ?? 0,
                               ),
                               const SizedBox(height: 8),
                               const Divider(height: 1, color: Colors.grey),

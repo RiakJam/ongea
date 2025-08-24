@@ -7,7 +7,8 @@ import 'dart:async';
 import '../widgets/post_card.dart';
 import '../widgets/search_modal.dart';
 import '../widgets/ad_card.dart';
-
+import '../login_page.dart';
+import 'user_profile_page.dart';
 class HomeFeedPage extends StatefulWidget {
   @override
   _HomeFeedPageState createState() => _HomeFeedPageState();
@@ -41,27 +42,22 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
   int? _currentlyPlayingIndex;
   final Map<int, bool> _userPausedVideos = {};
 
-  // Add auth state listener
   StreamSubscription<User?>? _authStateSubscription;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_handleScroll);
-    
-    // Listen to auth state changes
+
     _authStateSubscription = _auth.authStateChanges().listen((User? user) {
       if (user != null) {
-        // User is signed in
         _loadCurrentUser();
       } else {
-        // User is signed out
         setState(() {
           _currentUserId = null;
           _currentUserName = null;
           _currentUserAvatar = null;
         });
-        // Still load posts but not interactions
         _loadPosts();
       }
     });
@@ -73,29 +69,39 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
       setState(() {
         _currentUserId = user.uid;
       });
-      
-      // Load user profile data from Firebase
-      _database.child('users/${user.uid}').once().then((DatabaseEvent event) {
-        if (event.snapshot.value != null) {
-          final userData = Map<String, dynamic>.from(event.snapshot.value as Map);
-          setState(() {
-            _currentUserName = userData['name'] ?? user.displayName ?? 'Guest';
-            _currentUserAvatar = userData['photoURL'] ?? user.photoURL ?? 'https://i.pravatar.cc/150?img=1';
+
+      _database
+          .child('users/${user.uid}')
+          .once()
+          .then((DatabaseEvent event) {
+            if (event.snapshot.value != null) {
+              final userData = Map<String, dynamic>.from(
+                event.snapshot.value as Map,
+              );
+              setState(() {
+                _currentUserName =
+                    userData['name'] ?? user.displayName ?? 'User';
+                _currentUserAvatar =
+                    userData['photoURL'] ??
+                    user.photoURL ??
+                    'https://i.pravatar.cc/150?img=1';
+              });
+            } else {
+              setState(() {
+                _currentUserName = user.displayName ?? 'User';
+                _currentUserAvatar =
+                    user.photoURL ?? 'https://i.pravatar.cc/150?img=1';
+              });
+            }
+          })
+          .catchError((error) {
+            setState(() {
+              _currentUserName = user.displayName ?? 'User';
+              _currentUserAvatar =
+                  user.photoURL ?? 'https://i.pravatar.cc/150?img=1';
+            });
           });
-        } else {
-          setState(() {
-            _currentUserName = user.displayName ?? 'Guest';
-            _currentUserAvatar = user.photoURL ?? 'https://i.pravatar.cc/150?img=1';
-          });
-        }
-      }).catchError((error) {
-        setState(() {
-          _currentUserName = user.displayName ?? 'Anonymous';
-          _currentUserAvatar = user.photoURL ?? 'https://i.pravatar.cc/150?img=1';
-        });
-      });
-      
-      // Load posts and interactions after we have the current user ID
+
       _loadPosts();
       _loadInteractions();
     }
@@ -133,23 +139,19 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
                   _posts = postsList;
                   _initializeVideoControllers();
 
-                  // Initialize all counts from post data
                   for (var post in _posts) {
                     final postKey = post['key'] as String? ?? '';
 
-                    // Initialize comment count
                     final comments = post['comments'];
                     _commentCounts[postKey] = comments is Map
                         ? comments.length
                         : 0;
 
-                    // Initialize share count
                     final shares = post['shares'];
                     _shareCounts[postKey] = (shares is int)
                         ? shares
                         : (shares is num ? shares.toInt() : 0);
 
-                    // Initialize like count
                     final likes = post['likes'];
                     _likeCounts[postKey] = (likes is int)
                         ? likes
@@ -157,7 +159,6 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
                   }
                 });
               } else {
-                // Handle case where there are no posts
                 setState(() {
                   _posts = [];
                   _initializeVideoControllers();
@@ -165,7 +166,6 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
               }
             } catch (e) {
               print('Error loading posts: $e');
-              // Handle error gracefully
               setState(() {
                 _posts = [];
                 _initializeVideoControllers();
@@ -174,7 +174,6 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
           },
           onError: (error) {
             print('Firebase Database Error: $error');
-            // Handle error gracefully
             setState(() {
               _posts = [];
               _initializeVideoControllers();
@@ -186,7 +185,6 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
   void _loadInteractions() {
     if (_currentUserId == null) return;
 
-    // Load user likes
     _database
         .child('userLikes/$_currentUserId')
         .onValue
@@ -212,7 +210,6 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
           },
         );
 
-    // Load saves
     _database
         .child('userSaves/$_currentUserId')
         .onValue
@@ -238,7 +235,6 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
           },
         );
 
-    // Load gifts
     _database
         .child('gifts')
         .onValue
@@ -277,7 +273,6 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
           },
         );
 
-    // Load follows
     _database
         .child('userFollows/$_currentUserId')
         .onValue
@@ -419,8 +414,6 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
         ),
       );
 
-      // The GiftPage will handle the actual gift sending
-      // We just need to refresh our data
       _loadInteractions();
     } catch (e) {
       print('Error sending gift: $e');
@@ -448,12 +441,10 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
       final currentLikes = (post['likes'] is int ? post['likes'] as int : 0);
       final isLiked = _likedPosts[postKey] ?? false;
 
-      // Update the post likes count
       await postRef.update({
         'likes': isLiked ? currentLikes - 1 : currentLikes + 1,
       });
 
-      // Update user likes
       final userLikesRef = _database.child(
         'userLikes/$_currentUserId/$postKey',
       );
@@ -522,21 +513,17 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
 
       if (isFollowing) {
         await userFollowsRef.remove();
-        // Also decrement follower count for the user being unfollowed
         await _database
             .child('users/$userId/followersCount')
             .set(ServerValue.increment(-1));
-        // Decrement following count for current user
         await _database
             .child('users/$_currentUserId/followingCount')
             .set(ServerValue.increment(-1));
       } else {
         await userFollowsRef.set(ServerValue.timestamp);
-        // Increment follower count for the user being followed
         await _database
             .child('users/$userId/followersCount')
             .set(ServerValue.increment(1));
-        // Increment following count for current user
         await _database
             .child('users/$_currentUserId/followingCount')
             .set(ServerValue.increment(1));
@@ -603,47 +590,128 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
       }
     });
   }
-
   Widget _buildTopBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              CircleAvatar(
-                backgroundImage: NetworkImage(
-                  _currentUserAvatar ?? 'https://i.pravatar.cc/150?img=1',
+    return Container(
+      decoration: BoxDecoration(color: Colors.transparent),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                // Make the avatar clickable
+                GestureDetector(
+                  onTap: _currentUserId != null
+                      ? () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => UserProfilePage(
+                                userId: _currentUserId!,
+                                currentUserId: _currentUserId,
+                              ),
+                            ),
+                          );
+                        }
+                      : null,
+                  child: CircleAvatar(
+                    backgroundImage: NetworkImage(
+                      _currentUserAvatar ?? 'https://i.pravatar.cc/150?img=1',
+                    ),
+                    radius: 20,
+                  ),
                 ),
-                radius: 20,
+                const SizedBox(width: 10),
+                if (_currentUserId == null)
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => LoginPage()),
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        'Login',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  // Make the username clickable
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => UserProfilePage(
+                            userId: _currentUserId!,
+                            currentUserId: _currentUserId,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        _currentUserName ?? 'User',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.6),
+                shape: BoxShape.circle,
               ),
-              const SizedBox(width: 10),
-              Text(
-                _currentUserName ?? 'Guest',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
+              child: IconButton(
+                icon: const Icon(Icons.search, color: Colors.white),
+                onPressed: _openSearchModal,
               ),
-            ],
-          ),
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: _openSearchModal,
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Stack(
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
         children: [
+          // Main content
           Column(
             children: [
+              // Top bar with transparent background
               _buildTopBar(),
               Expanded(
                 child: NotificationListener<ScrollNotification>(
@@ -693,8 +761,14 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
 
                         final post = _posts[postIndex];
                         final postKey = post['key'] as String? ?? '';
+                        final postUserId = post['userId'] as String?;
                         final isFollowing =
-                            _followingUsers[post['userId']] ?? false;
+                            _followingUsers[postUserId] ?? false;
+
+                        // Check if this is the current user's own post
+                        final isOwnPost =
+                            _currentUserId != null &&
+                            postUserId == _currentUserId;
 
                         return Column(
                           children: [
@@ -722,6 +796,8 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
                               isLiked: _likedPosts[postKey] ?? false,
                               isSaved: _savedPosts[postKey] ?? false,
                               isFollowing: isFollowing,
+                              // Hide follow button on own posts
+                              showFollowButton: !isOwnPost,
                               onLike: (String postKey) => _toggleLike(postKey),
                               onSave: (String postKey) => _toggleSave(postKey),
                               onGift: (String postKey) => _sendGift(postKey),
@@ -744,6 +820,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
               ),
             ],
           ),
+          // Search modal overlay
           if (_showSearchModal)
             SearchModal(
               context: context,
