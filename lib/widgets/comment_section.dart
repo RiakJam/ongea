@@ -52,15 +52,33 @@ class _CommentSectionState extends State<CommentSection> {
                     .equalTo(null) // Only top-level comments
                     .onValue,
                 builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    // Show loader only while waiting for the first data
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
                   if (!snapshot.hasData ||
                       snapshot.data!.snapshot.value == null) {
-                    return const Center(child: CircularProgressIndicator());
+                    // No comments case
+                    return const Center(
+                      child: Text(
+                        'I know you love the comment section, check later!',
+                        style: TextStyle(color: Colors.black54, fontSize: 16),
+                      ),
+                    );
                   }
 
                   final commentsData =
                       snapshot.data!.snapshot.value as Map<dynamic, dynamic>?;
-                  if (commentsData == null) {
-                    return const Center(child: Text('No comments yet'));
+
+                  if (commentsData == null || commentsData.isEmpty) {
+                    // Explicit empty map case
+                    return const Center(
+                      child: Text(
+                        'No comments yet, be the first to comment!',
+                        style: TextStyle(color: Colors.black54, fontSize: 16),
+                      ),
+                    );
                   }
 
                   // Convert to list and sort by timestamp

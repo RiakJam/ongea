@@ -20,7 +20,6 @@ class _ImagePostState extends State<ImagePost> {
     super.initState();
     _extractImageUrls();
   }
-
   void _extractImageUrls() {
     if (widget.post['mediaType'] == 'image' && widget.post['imageUrls'] != null) {
       dynamic imageUrlsData = widget.post['imageUrls'];

@@ -701,158 +701,159 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
       ),
     );
   }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // Main content
-          Column(
-            children: [
-              // Top bar with transparent background
-              _buildTopBar(),
-              Expanded(
-                child: NotificationListener<ScrollNotification>(
-                  onNotification: (scrollNotification) {
-                    if (scrollNotification is ScrollUpdateNotification ||
-                        scrollNotification is ScrollStartNotification) {
-                      _handleScroll();
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    backgroundColor: Colors.black,
+    body: Stack(
+      children: [
+        // Main content
+        Column(
+          children: [
+            // Top bar with transparent background - WRAP WITH SAFEAREA
+            SafeArea(
+              bottom: false, // Only apply padding to top
+              child: _buildTopBar(),
+            ),
+            Expanded(
+              child: NotificationListener<ScrollNotification>(
+                onNotification: (scrollNotification) {
+                  if (scrollNotification is ScrollUpdateNotification ||
+                      scrollNotification is ScrollStartNotification) {
+                    _handleScroll();
+                  }
+                  return false;
+                },
+                child: RefreshIndicator(
+                  onRefresh: () async {
+                    await Future.delayed(const Duration(seconds: 1));
+                    _loadPosts();
+                    if (_currentUserId != null) {
+                      _loadInteractions();
                     }
-                    return false;
                   },
-                  child: RefreshIndicator(
-                    onRefresh: () async {
-                      await Future.delayed(const Duration(seconds: 1));
-                      _loadPosts();
-                      if (_currentUserId != null) {
-                        _loadInteractions();
-                      }
-                    },
-                    child: ListView.builder(
-                      controller: _scrollController,
-                      physics: const BouncingScrollPhysics(),
-                      itemCount:
-                          _posts.length +
-                          (_posts.length ~/ 3), // Account for ad cards
-                      itemBuilder: (context, index) {
-                        // Check if we should show an ad (after every 3 posts)
-                        if (index > 0 && index % 4 == 0) {
-                          return Column(
-                            children: [
-                              const SizedBox(height: 8),
-                              AdCard(
-                                adText: "Check out our premium features!",
-                                imageUrl:
-                                    "https://via.placeholder.com/400x150.png?text=Sponsor+Ad",
-                              ),
-                              const SizedBox(height: 8),
-                              const Divider(height: 1, color: Colors.grey),
-                            ],
-                          );
-                        }
-
-                        // Calculate the actual post index accounting for ads
-                        final postIndex = index - (index ~/ 4);
-                        if (postIndex >= _posts.length) {
-                          return const SizedBox.shrink();
-                        }
-
-                        final post = _posts[postIndex];
-                        final postKey = post['key'] as String? ?? '';
-                        final postUserId = post['userId'] as String?;
-                        final isFollowing =
-                            _followingUsers[postUserId] ?? false;
-
-                        // Check if this is the current user's own post
-                        final isOwnPost =
-                            _currentUserId != null &&
-                            postUserId == _currentUserId;
-
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    physics: const BouncingScrollPhysics(),
+                    itemCount:
+                        _posts.length +
+                        (_posts.length ~/ 3), // Account for ad cards
+                    itemBuilder: (context, index) {
+                      // Check if we should show an ad (after every 3 posts)
+                      if (index > 0 && index % 4 == 0) {
                         return Column(
                           children: [
-                            PostCard(
-                              post: post,
-                              videoController: _videoControllers[postIndex],
-                              videoKey: _videoKeys[postIndex],
-                              isPlaying: postIndex == _currentlyPlayingIndex,
-                              isUserPaused:
-                                  _userPausedVideos[postIndex] ?? false,
-                              onUserPause: (bool paused) {
-                                setState(() {
-                                  _userPausedVideos[postIndex] = paused;
-                                  if (paused) {
-                                    _videoControllers[postIndex]?.pause();
-                                    if (_currentlyPlayingIndex == postIndex) {
-                                      _currentlyPlayingIndex = null;
-                                    }
-                                  } else {
-                                    _handleScroll();
-                                  }
-                                });
-                              },
-                              currentUserId: _currentUserId,
-                              isLiked: _likedPosts[postKey] ?? false,
-                              isSaved: _savedPosts[postKey] ?? false,
-                              isFollowing: isFollowing,
-                              // Hide follow button on own posts
-                              showFollowButton: !isOwnPost,
-                              onLike: (String postKey) => _toggleLike(postKey),
-                              onSave: (String postKey) => _toggleSave(postKey),
-                              onGift: (String postKey) => _sendGift(postKey),
-                              onFollow: (String userId) =>
-                                  _toggleFollow(userId),
-                              giftCount: _giftCounts[postKey] ?? 0,
-                              commentCount: _commentCounts[postKey] ?? 0,
-                              shareCount: _shareCounts[postKey] ?? 0,
-                              likeCount: _likeCounts[postKey] ?? 0,
-                              hasGifted: _hasGifted[postKey] ?? false,
+                            const SizedBox(height: 8),
+                            AdCard(
+                              adText: "Check out our premium features!",
+                              imageUrl:
+                                  "https://via.placeholder.com/400x150.png?text=Sponsor+Ad",
                             ),
                             const SizedBox(height: 8),
                             const Divider(height: 1, color: Colors.grey),
                           ],
                         );
-                      },
-                    ),
+                      }
+
+                      // Calculate the actual post index accounting for ads
+                      final postIndex = index - (index ~/ 4);
+                      if (postIndex >= _posts.length) {
+                        return const SizedBox.shrink();
+                      }
+
+                      final post = _posts[postIndex];
+                      final postKey = post['key'] as String? ?? '';
+                      final postUserId = post['userId'] as String?;
+                      final isFollowing =
+                          _followingUsers[postUserId] ?? false;
+
+                      // Check if this is the current user's own post
+                      final isOwnPost =
+                          _currentUserId != null &&
+                          postUserId == _currentUserId;
+
+                      return Column(
+                        children: [
+                          PostCard(
+                            post: post,
+                            videoController: _videoControllers[postIndex],
+                            videoKey: _videoKeys[postIndex],
+                            isPlaying: postIndex == _currentlyPlayingIndex,
+                            isUserPaused:
+                                _userPausedVideos[postIndex] ?? false,
+                            onUserPause: (bool paused) {
+                              setState(() {
+                                _userPausedVideos[postIndex] = paused;
+                                if (paused) {
+                                  _videoControllers[postIndex]?.pause();
+                                  if (_currentlyPlayingIndex == postIndex) {
+                                    _currentlyPlayingIndex = null;
+                                  }
+                                } else {
+                                  _handleScroll();
+                                }
+                              });
+                            },
+                            currentUserId: _currentUserId,
+                            isLiked: _likedPosts[postKey] ?? false,
+                            isSaved: _savedPosts[postKey] ?? false,
+                            isFollowing: isFollowing,
+                            // Hide follow button on own posts
+                            showFollowButton: !isOwnPost,
+                            onLike: (String postKey) => _toggleLike(postKey),
+                            onSave: (String postKey) => _toggleSave(postKey),
+                            onGift: (String postKey) => _sendGift(postKey),
+                            onFollow: (String userId) =>
+                                _toggleFollow(userId),
+                            giftCount: _giftCounts[postKey] ?? 0,
+                            commentCount: _commentCounts[postKey] ?? 0,
+                            shareCount: _shareCounts[postKey] ?? 0,
+                            likeCount: _likeCounts[postKey] ?? 0,
+                            hasGifted: _hasGifted[postKey] ?? false,
+                          ),
+                          const SizedBox(height: 8),
+                          const Divider(height: 1, color: Colors.grey),
+                        ],
+                      );
+                    },
                   ),
                 ),
               ),
-            ],
-          ),
-          // Search modal overlay
-          if (_showSearchModal)
-            SearchModal(
-              context: context,
-              searchController: _searchController,
-              searchQuery: _searchQuery,
-              filteredPosts: _filteredPosts,
-              posts: _posts,
-              videoControllers: _videoControllers,
-              videoKeys: _videoKeys,
-              currentlyPlayingIndex: _currentlyPlayingIndex,
-              userPausedVideos: _userPausedVideos,
-              currentUserId: _currentUserId,
-              likedPosts: _likedPosts,
-              savedPosts: _savedPosts,
-              followingUsers: _followingUsers,
-              commentCounts: _commentCounts,
-              shareCounts: _shareCounts,
-              likeCounts: _likeCounts,
-              onLike: _toggleLike,
-              onSave: _toggleSave,
-              onGift: _sendGift,
-              onFollow: _toggleFollow,
-              giftCounts: _giftCounts,
-              hasGifted: _hasGifted,
-              onClose: _closeSearchModal,
-              onUpdateSearchQuery: _updateSearchQuery,
             ),
-        ],
-      ),
-    );
-  }
-
+          ],
+        ),
+        // Search modal overlay
+        if (_showSearchModal)
+          SearchModal(
+            context: context,
+            searchController: _searchController,
+            searchQuery: _searchQuery,
+            filteredPosts: _filteredPosts,
+            posts: _posts,
+            videoControllers: _videoControllers,
+            videoKeys: _videoKeys,
+            currentlyPlayingIndex: _currentlyPlayingIndex,
+            userPausedVideos: _userPausedVideos,
+            currentUserId: _currentUserId,
+            likedPosts: _likedPosts,
+            savedPosts: _savedPosts,
+            followingUsers: _followingUsers,
+            commentCounts: _commentCounts,
+            shareCounts: _shareCounts,
+            likeCounts: _likeCounts,
+            onLike: _toggleLike,
+            onSave: _toggleSave,
+            onGift: _sendGift,
+            onFollow: _toggleFollow,
+            giftCounts: _giftCounts,
+            hasGifted: _hasGifted,
+            onClose: _closeSearchModal,
+            onUpdateSearchQuery: _updateSearchQuery,
+          ),
+      ],
+    ),
+  );
+}
   @override
   void dispose() {
     _authStateSubscription?.cancel();

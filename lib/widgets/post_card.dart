@@ -6,8 +6,7 @@ import 'video_post.dart';
 import 'image_post.dart';
 import 'text_post.dart';
 import 'comment_section.dart';
-import '../pages/user_profile_page.dart'; // Add this import
-
+import '../pages/user_profile_page.dart';
 
 class PostCard extends StatelessWidget {
   final Map<String, dynamic> post;
@@ -54,6 +53,7 @@ class PostCard extends StatelessWidget {
     this.likeCount = 0,
     Key? key,
   }) : super(key: key);
+  
 
   String _formatTimestamp(int timestamp) {
     final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
@@ -83,6 +83,22 @@ class PostCard extends StatelessWidget {
               isPlaying: isPlaying,
               isUserPaused: isUserPaused,
               onUserPause: onUserPause,
+              // Add the required parameters
+              postId: post['key'] ?? '', // Use post key as postId
+              userId: post['userId'] ?? '', // Use the user ID from post
+              // You can also add other optional parameters if needed
+              username: post['userName'] ?? '',
+              userAvatar: post['userPhoto'] ?? '',
+              caption: post['caption'] ?? '',
+              likes: likeCount,
+              comments: commentCount,
+              isLiked: isLiked,
+              isSaved: isSaved,
+              onLike: () => onLike(post['key']),
+              onSave: () => onSave(post['key']),
+              onComment: () => _showComments(context),
+              onGift: () => onGift(post['key']),
+              onShare: () => _showShareOptions(context),
             ),
           const SizedBox(height: 10),
           _buildPostFooter(context),
