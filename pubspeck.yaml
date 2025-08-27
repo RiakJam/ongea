@@ -40,6 +40,7 @@ dependencies:
   device_info_plus: ^11.5.0
   pay: ^3.2.1
   media_kit: ^1.2.0
+  
 
 
 dev_dependencies:

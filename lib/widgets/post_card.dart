@@ -79,10 +79,10 @@ class PostCard extends StatelessWidget {
           if (post['mediaType'] == 'video')
             VideoPost(
               videoController: videoController,
-              videoKey: videoKey,
-              isPlaying: isPlaying,
-              isUserPaused: isUserPaused,
-              onUserPause: onUserPause,
+              // videoKey: videoKey,
+              // isPlaying: isPlaying,
+              // isUserPaused: isUserPaused,
+              // onUserPause: onUserPause,
               // Add the required parameters
               postId: post['key'] ?? '', // Use post key as postId
               userId: post['userId'] ?? '', // Use the user ID from post
@@ -92,13 +92,13 @@ class PostCard extends StatelessWidget {
               caption: post['caption'] ?? '',
               likes: likeCount,
               comments: commentCount,
-              isLiked: isLiked,
-              isSaved: isSaved,
-              onLike: () => onLike(post['key']),
-              onSave: () => onSave(post['key']),
-              onComment: () => _showComments(context),
-              onGift: () => onGift(post['key']),
-              onShare: () => _showShareOptions(context),
+              // isLiked: isLiked,
+              // isSaved: isSaved,
+              // onLike: () => onLike(post['key']),
+              // onSave: () => onSave(post['key']),
+              // onComment: () => _showComments(context),
+              // onGift: () => onGift(post['key']),
+              // onShare: () => _showShareOptions(context),
             ),
           const SizedBox(height: 10),
           _buildPostFooter(context),
