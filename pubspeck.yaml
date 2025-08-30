@@ -54,6 +54,7 @@ flutter:
 
   assets:
     - assets/icon.png
+    - assets/default_avatar.png
 
 flutter_icons:
   android: true

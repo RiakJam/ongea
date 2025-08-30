@@ -4,11 +4,13 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:ongea/services/gift_page.dart';
 import 'dart:async';
+import 'dart:math';
 import '../widgets/post_card.dart';
-import '../widgets/search_modal.dart';
+import '../widgets/search_page.dart'; // Changed from search_modal.dart
 import '../widgets/ad_card.dart';
 import '../login_page.dart';
 import 'user_profile_page.dart';
+
 class HomeFeedPage extends StatefulWidget {
   @override
   _HomeFeedPageState createState() => _HomeFeedPageState();
@@ -39,8 +41,15 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
   final ScrollController _scrollController = ScrollController();
   final Map<int, VideoPlayerController?> _videoControllers = {};
   final Map<int, GlobalKey> _videoKeys = {};
+  final Map<int, Future<void>?> _videoInitializationFutures = {};
   int? _currentlyPlayingIndex;
   final Map<int, bool> _userPausedVideos = {};
+
+  // Preloading variables
+  final int _preloadAheadCount = 3;
+  final Map<String, dynamic> _preloadedPostData = {};
+  bool _isPreloading = false;
+  int _lastPreloadedIndex = -1;
 
   StreamSubscription<User?>? _authStateSubscription;
 
@@ -70,37 +79,30 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
         _currentUserId = user.uid;
       });
 
-      _database
-          .child('users/${user.uid}')
-          .once()
-          .then((DatabaseEvent event) {
-            if (event.snapshot.value != null) {
-              final userData = Map<String, dynamic>.from(
-                event.snapshot.value as Map,
-              );
-              setState(() {
-                _currentUserName =
-                    userData['name'] ?? user.displayName ?? 'User';
-                _currentUserAvatar =
-                    userData['photoURL'] ??
-                    user.photoURL ??
-                    'https://i.pravatar.cc/150?img=1';
-              });
-            } else {
-              setState(() {
-                _currentUserName = user.displayName ?? 'User';
-                _currentUserAvatar =
-                    user.photoURL ?? 'https://i.pravatar.cc/150?img=1';
-              });
-            }
-          })
-          .catchError((error) {
-            setState(() {
-              _currentUserName = user.displayName ?? 'User';
-              _currentUserAvatar =
-                  user.photoURL ?? 'https://i.pravatar.cc/150?img=1';
-            });
+      _database.child('users/${user.uid}').once().then((DatabaseEvent event) {
+        if (event.snapshot.value != null) {
+          final userData = Map<String, dynamic>.from(
+            event.snapshot.value as Map,
+          );
+          setState(() {
+            _currentUserName = userData['name'] ?? user.displayName ?? 'User';
+            _currentUserAvatar = userData['photoURL'] ??
+                user.photoURL ??
+                'https://i.pravatar.cc/150?img=1';
           });
+        } else {
+          setState(() {
+            _currentUserName = user.displayName ?? 'User';
+            _currentUserAvatar =
+                user.photoURL ?? 'https://i.pravatar.cc/150?img=1';
+          });
+        }
+      }).catchError((error) {
+        setState(() {
+          _currentUserName = user.displayName ?? 'User';
+          _currentUserAvatar = user.photoURL ?? 'https://i.pravatar.cc/150?img=1';
+        });
+      });
 
       _loadPosts();
       _loadInteractions();
@@ -108,228 +110,310 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
   }
 
   void _loadPosts() {
-    _database
-        .child('posts')
-        .orderByChild('timestamp')
-        .onValue
-        .listen(
-          (event) {
-            try {
-              final data = event.snapshot.value;
-              if (data != null && data is Map<dynamic, dynamic>) {
-                final postsList = <Map<String, dynamic>>[];
+    _database.child('posts').onValue.listen(
+      (event) {
+        try {
+          final data = event.snapshot.value;
+          if (data != null && data is Map<dynamic, dynamic>) {
+            final postsList = <Map<String, dynamic>>[];
 
-                data.forEach((key, value) {
-                  if (value is Map<dynamic, dynamic>) {
-                    final post = Map<String, dynamic>.from(value);
-                    post['key'] = key;
-                    postsList.add(post);
-                  }
-                });
-
-                postsList.sort((a, b) {
-                  final aTimestamp = a['timestamp'] ?? 0;
-                  final bTimestamp = b['timestamp'] ?? 0;
-                  return (bTimestamp is int ? bTimestamp : 0).compareTo(
-                    aTimestamp is int ? aTimestamp : 0,
-                  );
-                });
-
-                setState(() {
-                  _posts = postsList;
-                  _initializeVideoControllers();
-
-                  for (var post in _posts) {
-                    final postKey = post['key'] as String? ?? '';
-
-                    final comments = post['comments'];
-                    _commentCounts[postKey] = comments is Map
-                        ? comments.length
-                        : 0;
-
-                    final shares = post['shares'];
-                    _shareCounts[postKey] = (shares is int)
-                        ? shares
-                        : (shares is num ? shares.toInt() : 0);
-
-                    final likes = post['likes'];
-                    _likeCounts[postKey] = (likes is int)
-                        ? likes
-                        : (likes is num ? likes.toInt() : 0);
-                  }
-                });
-              } else {
-                setState(() {
-                  _posts = [];
-                  _initializeVideoControllers();
-                });
+            data.forEach((key, value) {
+              if (value is Map<dynamic, dynamic>) {
+                final post = Map<String, dynamic>.from(value);
+                post['key'] = key;
+                postsList.add(post);
               }
-            } catch (e) {
-              print('Error loading posts: $e');
-              setState(() {
-                _posts = [];
-                _initializeVideoControllers();
-              });
-            }
-          },
-          onError: (error) {
-            print('Firebase Database Error: $error');
+            });
+
+            final random = Random();
+            postsList.shuffle(random);
+
+            setState(() {
+              _posts = postsList;
+              _initializeVideoControllers();
+
+              for (var post in _posts) {
+                final postKey = post['key'] as String? ?? '';
+
+                final comments = post['comments'];
+                _commentCounts[postKey] = comments is Map ? comments.length : 0;
+
+                final shares = post['shares'];
+                _shareCounts[postKey] =
+                    (shares is int) ? shares : (shares is num ? shares.toInt() : 0);
+
+                final likes = post['likes'];
+                _likeCounts[postKey] =
+                    (likes is int) ? likes : (likes is num ? likes.toInt() : 0);
+              }
+            });
+          } else {
             setState(() {
               _posts = [];
               _initializeVideoControllers();
             });
-          },
-        );
+          }
+        } catch (e) {
+          print('Error loading posts: $e');
+          setState(() {
+            _posts = [];
+            _initializeVideoControllers();
+          });
+        }
+      },
+      onError: (error) {
+        print('Firebase Database Error: $error');
+        setState(() {
+          _posts = [];
+          _initializeVideoControllers();
+        });
+      },
+    );
   }
 
   void _loadInteractions() {
     if (_currentUserId == null) return;
 
-    _database
-        .child('userLikes/$_currentUserId')
-        .onValue
-        .listen(
-          (event) {
-            try {
-              final data = event.snapshot.value;
-              if (data != null && data is Map<dynamic, dynamic>) {
-                setState(() {
-                  data.forEach((postId, value) {
-                    if (postId is String) {
-                      _likedPosts[postId] = true;
-                    }
-                  });
-                });
-              }
-            } catch (e) {
-              print('Error loading likes: $e');
-            }
-          },
-          onError: (error) {
-            print('Error loading likes: $error');
-          },
-        );
+    _database.child('userLikes/$_currentUserId').onValue.listen(
+      (event) {
+        try {
+          final data = event.snapshot.value;
+          if (data != null && data is Map<dynamic, dynamic>) {
+            setState(() {
+              data.forEach((postId, value) {
+                if (postId is String) {
+                  _likedPosts[postId] = true;
+                }
+              });
+            });
+          }
+        } catch (e) {
+          print('Error loading likes: $e');
+        }
+      },
+      onError: (error) {
+        print('Error loading likes: $error');
+      },
+    );
 
-    _database
-        .child('userSaves/$_currentUserId')
-        .onValue
-        .listen(
-          (event) {
-            try {
-              final data = event.snapshot.value;
-              if (data != null && data is Map<dynamic, dynamic>) {
-                setState(() {
-                  data.forEach((postId, value) {
-                    if (postId is String) {
-                      _savedPosts[postId] = true;
-                    }
-                  });
-                });
-              }
-            } catch (e) {
-              print('Error loading saves: $e');
-            }
-          },
-          onError: (error) {
-            print('Error loading saves: $error');
-          },
-        );
+    _database.child('userSaves/$_currentUserId').onValue.listen(
+      (event) {
+        try {
+          final data = event.snapshot.value;
+          if (data != null && data is Map<dynamic, dynamic>) {
+            setState(() {
+              data.forEach((postId, value) {
+                if (postId is String) {
+                  _savedPosts[postId] = true;
+                }
+              });
+            });
+          }
+        } catch (e) {
+          print('Error loading saves: $e');
+        }
+      },
+      onError: (error) {
+        print('Error loading saves: $error');
+      },
+    );
 
-    _database
-        .child('gifts')
-        .onValue
-        .listen(
-          (event) {
-            try {
-              final data = event.snapshot.value;
-              if (data != null && data is Map<dynamic, dynamic>) {
-                setState(() {
-                  _giftCounts.clear();
-                  _hasGifted.clear();
-                  data.forEach((postId, gifts) {
-                    if (postId is String && gifts is Map<dynamic, dynamic>) {
-                      int total = 0;
-                      gifts.forEach((userId, count) {
-                        if (userId == _currentUserId) {
-                          _hasGifted[postId] = true;
-                        }
-                        if (count is int) {
-                          total += count;
-                        } else if (count is num) {
-                          total += count.toInt();
-                        }
-                      });
-                      _giftCounts[postId] = total;
+    _database.child('gifts').onValue.listen(
+      (event) {
+        try {
+          final data = event.snapshot.value;
+          if (data != null && data is Map<dynamic, dynamic>) {
+            setState(() {
+              _giftCounts.clear();
+              _hasGifted.clear();
+              data.forEach((postId, gifts) {
+                if (postId is String && gifts is Map<dynamic, dynamic>) {
+                  int total = 0;
+                  gifts.forEach((userId, count) {
+                    if (userId == _currentUserId) {
+                      _hasGifted[postId] = true;
+                    }
+                    if (count is int) {
+                      total += count;
+                    } else if (count is num) {
+                      total += count.toInt();
                     }
                   });
-                });
-              }
-            } catch (e) {
-              print('Error loading gifts: $e');
-            }
-          },
-          onError: (error) {
-            print('Error loading gifts: $error');
-          },
-        );
+                  _giftCounts[postId] = total;
+                }
+              });
+            });
+          }
+        } catch (e) {
+          print('Error loading gifts: $e');
+        }
+      },
+      onError: (error) {
+        print('Error loading gifts: $error');
+      },
+    );
 
-    _database
-        .child('userFollows/$_currentUserId')
-        .onValue
-        .listen(
-          (event) {
-            try {
-              final data = event.snapshot.value;
-              if (data != null && data is Map<dynamic, dynamic>) {
-                setState(() {
-                  _followingUsers.clear();
-                  data.forEach((followedUserId, value) {
-                    if (followedUserId is String) {
-                      _followingUsers[followedUserId] = true;
-                    }
-                  });
-                });
-              }
-            } catch (e) {
-              print('Error loading follows: $e');
+    _database.child('userFollows/$_currentUserId').onValue.listen(
+      (event) {
+        try {
+          final data = event.snapshot.value;
+          if (data != null && data is Map<dynamic, dynamic>) {
+            setState(() {
+              _followingUsers.clear();
+              data.forEach((followedUserId, value) {
+                if (followedUserId is String) {
+                  _followingUsers[followedUserId] = true;
+                }
+              });
+            });
             }
-          },
-          onError: (error) {
-            print('Error loading follows: $error');
-          },
-        );
+          } catch (e) {
+            print('Error loading follows: $e');
+          }
+        },
+        onError: (error) {
+          print('Error loading follows: $error');
+        },
+      );
   }
 
-  void _initializeVideoControllers() {
-    for (var controller in _videoControllers.values) {
-      controller?.dispose();
+  void _initializeVideoControllers({int startIndex = 0}) {
+    for (var i = 0; i < startIndex; i++) {
+      if (_videoControllers.containsKey(i) &&
+          (i >= _posts.length || _posts[i]['mediaType'] != 'video')) {
+        _videoControllers[i]?.dispose();
+        _videoControllers.remove(i);
+        _videoKeys.remove(i);
+        _userPausedVideos.remove(i);
+        _videoInitializationFutures.remove(i);
+      }
     }
-    _videoControllers.clear();
-    _videoKeys.clear();
-    _userPausedVideos.clear();
 
-    for (var i = 0; i < _posts.length; i++) {
+    final endIndex = min(_posts.length, startIndex + _preloadAheadCount + 5);
+
+    for (var i = startIndex; i < endIndex; i++) {
+      if (i >= _posts.length) break;
+
       final mediaType = _posts[i]['mediaType'];
       final videoUrl = _posts[i]['videoUrl'];
 
       if (mediaType == 'video' && videoUrl is String && videoUrl.isNotEmpty) {
-        try {
-          _videoControllers[i] = VideoPlayerController.network(videoUrl)
-            ..initialize()
-                .then((_) {
-                  if (mounted) setState(() {});
-                  _videoControllers[i]?.setLooping(true);
-                })
-                .catchError((error) {
-                  print('Error initializing video controller: $error');
+        if (!_videoControllers.containsKey(i)) {
+          try {
+            final controller = VideoPlayerController.network(videoUrl);
+            _videoControllers[i] = controller;
+            _videoKeys[i] = GlobalKey();
+            _userPausedVideos[i] = false;
+
+            _videoInitializationFutures[i] = controller.initialize().then((_) {
+              if (mounted) setState(() {});
+              controller.setLooping(true);
+
+              if (i == 0 && _currentlyPlayingIndex == null) {
+                controller.play();
+                setState(() {
+                  _currentlyPlayingIndex = 0;
                 });
-          _videoKeys[i] = GlobalKey();
-          _userPausedVideos[i] = false;
-        } catch (e) {
-          print('Error creating video controller: $e');
+              }
+            }).catchError((error) {
+              print('Error initializing video controller: $error');
+            });
+          } catch (e) {
+            print('Error creating video controller: $e');
+          }
         }
       }
     }
+
+    _lastPreloadedIndex = endIndex - 1;
+  }
+
+  void _preloadContent(int currentIndex) {
+    if (_isPreloading || _posts.isEmpty) return;
+
+    _isPreloading = true;
+    final preloadEndIndex = min(_posts.length, 5);
+
+    for (var i = 0; i < preloadEndIndex; i++) {
+      if (_posts[i]['mediaType'] == 'video') {
+        final videoUrl = _posts[i]['videoUrl'];
+        if (videoUrl is String &&
+            videoUrl.isNotEmpty &&
+            !_videoControllers.containsKey(i)) {
+          try {
+            final controller = VideoPlayerController.network(videoUrl);
+            _videoControllers[i] = controller;
+            _videoKeys[i] = GlobalKey();
+            _userPausedVideos[i] = false;
+
+            _videoInitializationFutures[i] = controller.initialize().then((_) {
+              controller.setLooping(true);
+            }).catchError((error) {
+              print('Error preinitializing video controller: $error');
+            });
+          } catch (e) {
+            print('Error precreating video controller: $e');
+          }
+        }
+      }
+
+      final userId = _posts[i]['userId'];
+      if (userId is String && !_preloadedPostData.containsKey(userId)) {
+        _database.child('users/$userId').once().then((DatabaseEvent event) {
+          if (event.snapshot.value != null) {
+            final userData = Map<String, dynamic>.from(
+              event.snapshot.value as Map,
+            );
+            _preloadedPostData[userId] = userData;
+          }
+        });
+      }
+    }
+
+    if (currentIndex > _lastPreloadedIndex) {
+      final preloadStartIndex = max(_lastPreloadedIndex + 1, 5);
+      final preloadEndIndex = min(_posts.length, currentIndex + _preloadAheadCount + 1);
+
+      for (var i = preloadStartIndex; i < preloadEndIndex; i++) {
+        if (_posts[i]['mediaType'] == 'video') {
+          final videoUrl = _posts[i]['videoUrl'];
+          if (videoUrl is String &&
+              videoUrl.isNotEmpty &&
+              !_videoControllers.containsKey(i)) {
+            try {
+              final controller = VideoPlayerController.network(videoUrl);
+              _videoControllers[i] = controller;
+              _videoKeys[i] = GlobalKey();
+              _userPausedVideos[i] = false;
+
+              _videoInitializationFutures[i] = controller.initialize().then((_) {
+                controller.setLooping(true);
+              }).catchError((error) {
+                print('Error preinitializing video controller: $error');
+              });
+            } catch (e) {
+              print('Error precreating video controller: $e');
+            }
+          }
+        }
+
+        final userId = _posts[i]['userId'];
+        if (userId is String && !_preloadedPostData.containsKey(userId)) {
+          _database.child('users/$userId').once().then((DatabaseEvent event) {
+            if (event.snapshot.value != null) {
+              final userData = Map<String, dynamic>.from(
+                event.snapshot.value as Map,
+              );
+              _preloadedPostData[userId] = userData;
+            }
+          });
+        }
+      }
+
+      _lastPreloadedIndex = preloadEndIndex - 1;
+    }
+
+    _isPreloading = false;
   }
 
   void _handleScroll() {
@@ -337,6 +421,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
 
     int? mostVisibleIndex;
     double maxVisiblePercentage = 0;
+    int currentVisibleIndex = -1;
 
     for (var i = 0; i < _posts.length; i++) {
       if (_posts[i]['mediaType'] != 'video') continue;
@@ -351,12 +436,11 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
       final size = renderObject.size;
       final screenHeight = MediaQuery.of(context).size.height;
 
-      final visibleHeight =
-          (position.dy + size.height < 0 || position.dy > screenHeight)
+      final visibleHeight = (position.dy + size.height < 0 || position.dy > screenHeight)
           ? 0.0
           : (position.dy + size.height > screenHeight
-                ? screenHeight - (position.dy > 0 ? position.dy : 0)
-                : (position.dy < 0 ? position.dy + size.height : size.height));
+              ? screenHeight - (position.dy > 0 ? position.dy : 0)
+              : (position.dy < 0 ? position.dy + size.height : size.height));
 
       final visiblePercentage = visibleHeight / size.height;
 
@@ -364,6 +448,14 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
         maxVisiblePercentage = visiblePercentage;
         mostVisibleIndex = i;
       }
+
+      if (visiblePercentage > 0.1 && currentVisibleIndex == -1) {
+        currentVisibleIndex = i;
+      }
+    }
+
+    if (currentVisibleIndex != -1) {
+      _preloadContent(currentVisibleIndex);
     }
 
     if (mostVisibleIndex != null && maxVisiblePercentage > 0.5) {
@@ -372,10 +464,22 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
         if (_currentlyPlayingIndex != null) {
           _videoControllers[_currentlyPlayingIndex]?.pause();
         }
-        _videoControllers[mostVisibleIndex]?.play();
-        setState(() {
-          _currentlyPlayingIndex = mostVisibleIndex;
-        });
+
+        if (_videoInitializationFutures.containsKey(mostVisibleIndex)) {
+          _videoInitializationFutures[mostVisibleIndex]!.then((_) {
+            if (mounted) {
+              _videoControllers[mostVisibleIndex]?.play();
+              setState(() {
+                _currentlyPlayingIndex = mostVisibleIndex;
+              });
+            }
+          });
+        } else {
+          _videoControllers[mostVisibleIndex]?.play();
+          setState(() {
+            _currentlyPlayingIndex = mostVisibleIndex;
+          });
+        }
       }
     } else if (_currentlyPlayingIndex != null &&
         !(_userPausedVideos[_currentlyPlayingIndex] ?? false)) {
@@ -417,9 +521,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
       _loadInteractions();
     } catch (e) {
       print('Error sending gift: $e');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error sending gift: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error sending gift: $e')));
     }
   }
 
@@ -445,9 +547,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
         'likes': isLiked ? currentLikes - 1 : currentLikes + 1,
       });
 
-      final userLikesRef = _database.child(
-        'userLikes/$_currentUserId/$postKey',
-      );
+      final userLikesRef = _database.child('userLikes/$_currentUserId/$postKey');
       if (isLiked) {
         await userLikesRef.remove();
       } else {
@@ -460,9 +560,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
       });
     } catch (e) {
       print('Error toggling like: $e');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error toggling like: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error toggling like: $e')));
     }
   }
 
@@ -473,9 +571,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
     }
 
     try {
-      final userSavesRef = _database.child(
-        'userSaves/$_currentUserId/$postKey',
-      );
+      final userSavesRef = _database.child('userSaves/$_currentUserId/$postKey');
       final saveSnapshot = await userSavesRef.get();
       final isSaved = saveSnapshot.exists && saveSnapshot.value == true;
 
@@ -490,9 +586,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
       });
     } catch (e) {
       print('Error toggling save: $e');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error toggling save: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error toggling save: $e')));
     }
   }
 
@@ -505,28 +599,18 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
     if (userId == _currentUserId) return;
 
     try {
-      final userFollowsRef = _database.child(
-        'userFollows/$_currentUserId/$userId',
-      );
+      final userFollowsRef = _database.child('userFollows/$_currentUserId/$userId');
       final followSnapshot = await userFollowsRef.get();
       final isFollowing = followSnapshot.exists;
 
       if (isFollowing) {
         await userFollowsRef.remove();
-        await _database
-            .child('users/$userId/followersCount')
-            .set(ServerValue.increment(-1));
-        await _database
-            .child('users/$_currentUserId/followingCount')
-            .set(ServerValue.increment(-1));
+        await _database.child('users/$userId/followersCount').set(ServerValue.increment(-1));
+        await _database.child('users/$_currentUserId/followingCount').set(ServerValue.increment(-1));
       } else {
         await userFollowsRef.set(ServerValue.timestamp);
-        await _database
-            .child('users/$userId/followersCount')
-            .set(ServerValue.increment(1));
-        await _database
-            .child('users/$_currentUserId/followingCount')
-            .set(ServerValue.increment(1));
+        await _database.child('users/$userId/followersCount').set(ServerValue.increment(1));
+        await _database.child('users/$_currentUserId/followingCount').set(ServerValue.increment(1));
       }
 
       setState(() {
@@ -534,9 +618,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
       });
     } catch (e) {
       print('Error toggling follow: $e');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error toggling follow: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error toggling follow: $e')));
     }
   }
 
@@ -560,20 +642,36 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
     );
   }
 
-  void _openSearchModal() {
+void _openSearchPage() {
+  // Pause any currently playing video before navigating
+  if (_currentlyPlayingIndex != null) {
+    _videoControllers[_currentlyPlayingIndex]?.pause();
     setState(() {
-      _showSearchModal = true;
+      _currentlyPlayingIndex = null;
     });
   }
 
-  void _closeSearchModal() {
-    setState(() {
-      _showSearchModal = false;
-      _searchQuery = "";
-      _searchController.clear();
-      _filteredPosts.clear();
-    });
-  }
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => SearchPage(
+        currentUserId: _currentUserId,
+        likedPosts: _likedPosts,
+        savedPosts: _savedPosts,
+        followingUsers: _followingUsers,
+        onLike: _toggleLike,
+        onSave: _toggleSave,
+        onGift: _sendGift,
+        onFollow: _toggleFollow,
+        giftCounts: _giftCounts,
+        hasGifted: _hasGifted,
+        commentCounts: _commentCounts,
+        shareCounts: _shareCounts,
+        likeCounts: _likeCounts,
+      ),
+    ),
+  );
+}
 
   void _updateSearchQuery(String query) {
     setState(() {
@@ -590,6 +688,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
       }
     });
   }
+
   Widget _buildTopBar() {
     return Container(
       decoration: BoxDecoration(color: Colors.transparent),
@@ -600,7 +699,6 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
           children: [
             Row(
               children: [
-                // Make the avatar clickable
                 GestureDetector(
                   onTap: _currentUserId != null
                       ? () {
@@ -632,10 +730,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
                       );
                     },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
                         color: Colors.black.withOpacity(0.6),
                         borderRadius: BorderRadius.circular(20),
@@ -651,7 +746,6 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
                     ),
                   )
                 else
-                  // Make the username clickable
                   GestureDetector(
                     onTap: () {
                       Navigator.push(
@@ -665,10 +759,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
                       );
                     },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
                         color: Colors.black.withOpacity(0.6),
                         borderRadius: BorderRadius.circular(20),
@@ -693,7 +784,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
               ),
               child: IconButton(
                 icon: const Icon(Icons.search, color: Colors.white),
-                onPressed: _openSearchModal,
+                onPressed: _openSearchPage, // Changed to open search page
               ),
             ),
           ],
@@ -701,159 +792,115 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
       ),
     );
   }
-@override
-Widget build(BuildContext context) {
-  return Scaffold(
-    backgroundColor: Colors.black,
-    body: Stack(
-      children: [
-        // Main content
-        Column(
-          children: [
-            // Top bar with transparent background - WRAP WITH SAFEAREA
-            SafeArea(
-              bottom: false, // Only apply padding to top
-              child: _buildTopBar(),
-            ),
-            Expanded(
-              child: NotificationListener<ScrollNotification>(
-                onNotification: (scrollNotification) {
-                  if (scrollNotification is ScrollUpdateNotification ||
-                      scrollNotification is ScrollStartNotification) {
-                    _handleScroll();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Column(
+        children: [
+          SafeArea(
+            bottom: false,
+            child: _buildTopBar(),
+          ),
+          Expanded(
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (scrollNotification) {
+                if (scrollNotification is ScrollUpdateNotification ||
+                    scrollNotification is ScrollStartNotification) {
+                  _handleScroll();
+                }
+                return false;
+              },
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  await Future.delayed(const Duration(seconds: 1));
+                  _loadPosts();
+                  if (_currentUserId != null) {
+                    _loadInteractions();
                   }
-                  return false;
                 },
-                child: RefreshIndicator(
-                  onRefresh: () async {
-                    await Future.delayed(const Duration(seconds: 1));
-                    _loadPosts();
-                    if (_currentUserId != null) {
-                      _loadInteractions();
-                    }
-                  },
-                  child: ListView.builder(
-                    controller: _scrollController,
-                    physics: const BouncingScrollPhysics(),
-                    itemCount:
-                        _posts.length +
-                        (_posts.length ~/ 3), // Account for ad cards
-                    itemBuilder: (context, index) {
-                      // Check if we should show an ad (after every 3 posts)
-                      if (index > 0 && index % 4 == 0) {
-                        return Column(
-                          children: [
-                            const SizedBox(height: 8),
-                            AdCard(
-                              adText: "Check out our premium features!",
-                              imageUrl:
-                                  "https://via.placeholder.com/400x150.png?text=Sponsor+Ad",
-                            ),
-                            const SizedBox(height: 8),
-                            const Divider(height: 1, color: Colors.grey),
-                          ],
-                        );
-                      }
-
-                      // Calculate the actual post index accounting for ads
-                      final postIndex = index - (index ~/ 4);
-                      if (postIndex >= _posts.length) {
-                        return const SizedBox.shrink();
-                      }
-
-                      final post = _posts[postIndex];
-                      final postKey = post['key'] as String? ?? '';
-                      final postUserId = post['userId'] as String?;
-                      final isFollowing =
-                          _followingUsers[postUserId] ?? false;
-
-                      // Check if this is the current user's own post
-                      final isOwnPost =
-                          _currentUserId != null &&
-                          postUserId == _currentUserId;
-
+                child: ListView.builder(
+                  controller: _scrollController,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: _posts.length + (_posts.length ~/ 3),
+                  itemBuilder: (context, index) {
+                    if (index > 0 && index % 4 == 0) {
                       return Column(
                         children: [
-                          PostCard(
-                            post: post,
-                            videoController: _videoControllers[postIndex],
-                            videoKey: _videoKeys[postIndex],
-                            isPlaying: postIndex == _currentlyPlayingIndex,
-                            isUserPaused:
-                                _userPausedVideos[postIndex] ?? false,
-                            onUserPause: (bool paused) {
-                              setState(() {
-                                _userPausedVideos[postIndex] = paused;
-                                if (paused) {
-                                  _videoControllers[postIndex]?.pause();
-                                  if (_currentlyPlayingIndex == postIndex) {
-                                    _currentlyPlayingIndex = null;
-                                  }
-                                } else {
-                                  _handleScroll();
-                                }
-                              });
-                            },
-                            currentUserId: _currentUserId,
-                            isLiked: _likedPosts[postKey] ?? false,
-                            isSaved: _savedPosts[postKey] ?? false,
-                            isFollowing: isFollowing,
-                            // Hide follow button on own posts
-                            showFollowButton: !isOwnPost,
-                            onLike: (String postKey) => _toggleLike(postKey),
-                            onSave: (String postKey) => _toggleSave(postKey),
-                            onGift: (String postKey) => _sendGift(postKey),
-                            onFollow: (String userId) =>
-                                _toggleFollow(userId),
-                            giftCount: _giftCounts[postKey] ?? 0,
-                            commentCount: _commentCounts[postKey] ?? 0,
-                            shareCount: _shareCounts[postKey] ?? 0,
-                            likeCount: _likeCounts[postKey] ?? 0,
-                            hasGifted: _hasGifted[postKey] ?? false,
+                          const SizedBox(height: 8),
+                          AdCard(
+                            adText: "Check out our premium features!",
+                            imageUrl:
+                                "https://via.placeholder.com/400x150.png?text=Sponsor+Ad",
                           ),
                           const SizedBox(height: 8),
                           const Divider(height: 1, color: Colors.grey),
                         ],
                       );
-                    },
-                  ),
+                    }
+
+                    final postIndex = index - (index ~/ 4);
+                    if (postIndex >= _posts.length) {
+                      return const SizedBox.shrink();
+                    }
+
+                    final post = _posts[postIndex];
+                    final postKey = post['key'] as String? ?? '';
+                    final postUserId = post['userId'] as String?;
+                    final isFollowing = _followingUsers[postUserId] ?? false;
+                    final isOwnPost = _currentUserId != null && postUserId == _currentUserId;
+
+                    return Column(
+                      children: [
+                        PostCard(
+                          post: post,
+                          videoController: _videoControllers[postIndex],
+                          videoKey: _videoKeys[postIndex],
+                          isPlaying: postIndex == _currentlyPlayingIndex,
+                          isUserPaused: _userPausedVideos[postIndex] ?? false,
+                          onUserPause: (bool paused) {
+                            setState(() {
+                              _userPausedVideos[postIndex] = paused;
+                              if (paused) {
+                                _videoControllers[postIndex]?.pause();
+                                if (_currentlyPlayingIndex == postIndex) {
+                                  _currentlyPlayingIndex = null;
+                                }
+                              } else {
+                                _handleScroll();
+                              }
+                            });
+                          },
+                          currentUserId: _currentUserId,
+                          isLiked: _likedPosts[postKey] ?? false,
+                          isSaved: _savedPosts[postKey] ?? false,
+                          isFollowing: isFollowing,
+                          showFollowButton: !isOwnPost,
+                          onLike: _toggleLike,
+                          onSave: _toggleSave,
+                          onGift: _sendGift,
+                          onFollow: _toggleFollow,
+                          giftCount: _giftCounts[postKey] ?? 0,
+                          commentCount: _commentCounts[postKey] ?? 0,
+                          shareCount: _shareCounts[postKey] ?? 0,
+                          likeCount: _likeCounts[postKey] ?? 0,
+                          hasGifted: _hasGifted[postKey] ?? false,
+                        ),
+                        const SizedBox(height: 8),
+                        const Divider(height: 1, color: Colors.grey),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),
-          ],
-        ),
-        // Search modal overlay
-        if (_showSearchModal)
-          SearchModal(
-            context: context,
-            searchController: _searchController,
-            searchQuery: _searchQuery,
-            filteredPosts: _filteredPosts,
-            posts: _posts,
-            videoControllers: _videoControllers,
-            videoKeys: _videoKeys,
-            currentlyPlayingIndex: _currentlyPlayingIndex,
-            userPausedVideos: _userPausedVideos,
-            currentUserId: _currentUserId,
-            likedPosts: _likedPosts,
-            savedPosts: _savedPosts,
-            followingUsers: _followingUsers,
-            commentCounts: _commentCounts,
-            shareCounts: _shareCounts,
-            likeCounts: _likeCounts,
-            onLike: _toggleLike,
-            onSave: _toggleSave,
-            onGift: _sendGift,
-            onFollow: _toggleFollow,
-            giftCounts: _giftCounts,
-            hasGifted: _hasGifted,
-            onClose: _closeSearchModal,
-            onUpdateSearchQuery: _updateSearchQuery,
           ),
-      ],
-    ),
-  );
-}
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _authStateSubscription?.cancel();
