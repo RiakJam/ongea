@@ -49,10 +49,16 @@ class _UserProfilePageState extends State<UserProfilePage> {
   final Map<String, bool> _videoInitialized = {};
   String? _currentlyPlayingPostId;
   final Map<String, bool> _userPausedVideos = {};
+  
+  // For scroll and visibility detection
+  final ScrollController _scrollController = ScrollController();
+  bool _isScrolling = false;
+  final Map<String, bool> _isVideoVisible = {};
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_handleScroll);
     _loadUserData();
     _checkIfFollowing();
     _loadUserPosts();
@@ -60,11 +66,117 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
   @override
   void dispose() {
+    _scrollController.removeListener(_handleScroll);
+    _scrollController.dispose();
     // Dispose all video controllers
     _videoControllers.forEach((key, controller) {
       controller.dispose();
     });
     super.dispose();
+  }
+
+  void _handleScroll() {
+    // Debounce scroll events to avoid performance issues
+    if (_isScrolling) return;
+    
+    _isScrolling = true;
+    
+    // Check visibility after scroll ends
+    Future.delayed(Duration(milliseconds: 200), () {
+      if (mounted) {
+        _checkVideoVisibility();
+        _isScrolling = false;
+      }
+    });
+  }
+
+  void _checkVideoVisibility() {
+    final RenderObject? rootRenderObject = context.findRenderObject();
+    if (rootRenderObject == null) return;
+    
+    final ScrollableState? scrollableState = Scrollable.of(context);
+    if (scrollableState == null) return;
+    
+    final RenderBox renderBox = rootRenderObject as RenderBox;
+    final Size size = renderBox.size;
+    final Offset position = renderBox.localToGlobal(Offset.zero);
+    
+    final viewport = Rect.fromPoints(
+      position,
+      position + Offset(size.width, size.height),
+    );
+    
+    // Find which video is most centered in the viewport
+    String? mostCenteredPostId;
+    double maxVisibility = 0;
+    
+    for (var post in _userPosts) {
+      final postKey = post['key'];
+      if (post['mediaType'] != 'video') continue;
+      
+      final GlobalKey? videoKey = _videoKeys[postKey];
+      if (videoKey?.currentContext == null) continue;
+      
+      final RenderObject? videoRenderObject = videoKey!.currentContext?.findRenderObject();
+      if (videoRenderObject == null) continue;
+      
+      final RenderBox videoBox = videoRenderObject as RenderBox;
+      final Offset videoPosition = videoBox.localToGlobal(Offset.zero);
+      final videoRect = Rect.fromPoints(
+        videoPosition,
+        videoPosition + Offset(videoBox.size.width, videoBox.size.height),
+      );
+      
+      // Calculate intersection with viewport
+      final intersection = viewport.intersect(videoRect);
+      if (intersection.isEmpty) {
+        _isVideoVisible[postKey] = false;
+        continue;
+      }
+      
+      final visibleArea = intersection.width * intersection.height;
+      final totalArea = videoBox.size.width * videoBox.size.height;
+      final visibilityRatio = visibleArea / totalArea;
+      
+      _isVideoVisible[postKey] = visibilityRatio > 0.5;
+      
+      // Track the most visible video
+      if (visibilityRatio > maxVisibility) {
+        maxVisibility = visibilityRatio;
+        mostCenteredPostId = postKey;
+      }
+    }
+    
+    // Play the most centered video, pause others
+    _playCenteredVideo(mostCenteredPostId);
+  }
+
+  void _playCenteredVideo(String? postIdToPlay) {
+    // If user manually paused a video, don't auto-play
+    if (postIdToPlay != null && _userPausedVideos[postIdToPlay] == true) {
+      return;
+    }
+    
+    for (var post in _userPosts) {
+      final postKey = post['key'];
+      if (post['mediaType'] != 'video') continue;
+      
+      final controller = _videoControllers[postKey];
+      if (controller == null) continue;
+      
+      if (postKey == postIdToPlay && _isVideoControllerInitialized(postKey)) {
+        if (!controller.value.isPlaying) {
+          controller.play();
+          setState(() {
+            _currentlyPlayingPostId = postKey;
+          });
+        }
+      } else {
+        if (controller.value.isPlaying) {
+          controller.pause();
+        }
+      }
+    }
   }
 
   void _loadUserData() async {
@@ -174,6 +286,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     _videoInitialized[postKey] = true;
                     controller.setLooping(true);
                   });
+                  // Check visibility after all videos are initialized
+                  if (_areAllVideosInitialized()) {
+                    _scheduleInitialVisibilityCheck();
+                  }
                 }
               })
               .catchError((error) {
@@ -191,6 +307,26 @@ class _UserProfilePageState extends State<UserProfilePage> {
         }
       }
     }
+  }
+
+  bool _areAllVideosInitialized() {
+    for (var post in _userPosts) {
+      final postKey = post['key'];
+      if (post['mediaType'] == 'video') {
+        if (!_isVideoControllerInitialized(postKey)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  void _scheduleInitialVisibilityCheck() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _checkVideoVisibility();
+      }
+    });
   }
 
   bool _isVideoControllerInitialized(String postKey) {
@@ -512,22 +648,31 @@ class _UserProfilePageState extends State<UserProfilePage> {
   void _handleVideoPlayPause(String postKey, bool paused) {
     setState(() {
       _userPausedVideos[postKey] = paused;
-      if (paused) {
-        _videoControllers[postKey]?.pause();
-        if (_currentlyPlayingPostId == postKey) {
-          _currentlyPlayingPostId = null;
-        }
-      } else {
-        // Pause any currently playing video
-        if (_currentlyPlayingPostId != null &&
-            _currentlyPlayingPostId != postKey) {
-          _videoControllers[_currentlyPlayingPostId]?.pause();
-          _userPausedVideos[_currentlyPlayingPostId!] = false;
-        }
-        _videoControllers[postKey]?.play();
-        _currentlyPlayingPostId = postKey;
-      }
     });
+    
+    final controller = _videoControllers[postKey];
+    if (controller == null) return;
+    
+    if (paused) {
+      controller.pause();
+      if (_currentlyPlayingPostId == postKey) {
+        setState(() {
+          _currentlyPlayingPostId = null;
+        });
+      }
+    } else {
+      // Pause any currently playing video
+      if (_currentlyPlayingPostId != null && _currentlyPlayingPostId != postKey) {
+        final otherController = _videoControllers[_currentlyPlayingPostId!];
+        if (otherController != null && otherController.value.isPlaying) {
+          otherController.pause();
+        }
+      }
+      controller.play();
+      setState(() {
+        _currentlyPlayingPostId = postKey;
+      });
+    }
   }
 
   void _showLoginRequiredDialog(String action) {
@@ -654,6 +799,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
+              controller: _scrollController,
               child: Column(
                 children: [
                   // Profile Header
