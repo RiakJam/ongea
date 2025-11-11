@@ -10,10 +10,12 @@ import '../login_page.dart';
 import '../pages/user_profile_page.dart';
 
 class VideoFullScreenPage extends StatefulWidget {
-  final String initialPostId; // Only need the post ID to start with
+  final String initialPostId;
+  final String? initialVideoUrl;
 
   const VideoFullScreenPage({
     required this.initialPostId,
+    this.initialVideoUrl,
   });
 
   @override
@@ -21,16 +23,17 @@ class VideoFullScreenPage extends StatefulWidget {
 }
 
 class _VideoFullScreenPageState extends State<VideoFullScreenPage> {
-  // New properties for infinite scrolling
   final PageController _pageController = PageController();
   List<Map<String, dynamic>> _videos = [];
   bool _isLoadingMore = false;
   bool _hasMoreVideos = true;
-  String? _lastPostKey;
   Map<String, VideoPlayerController> _videoControllers = {};
   int _currentVideoIndex = 0;
 
-  // Existing properties
+  // Preloading variables
+  final int _preloadCount = 2;
+  final Set<String> _preloadedPostIds = {};
+
   bool _showVideoControls = true;
   bool _isUserPaused = false;
 
@@ -40,7 +43,7 @@ class _VideoFullScreenPageState extends State<VideoFullScreenPage> {
   User? get _currentUser => _auth.currentUser;
   String? get _currentUserId => _currentUser?.uid;
 
-  // Local state for instant feedback - now for current video
+  // Local state for current video
   bool _localIsLiked = false;
   bool _localIsSaved = false;
   bool _localIsFollowing = false;
@@ -49,7 +52,7 @@ class _VideoFullScreenPageState extends State<VideoFullScreenPage> {
   int _localGifts = 0;
   int _localShares = 0;
 
-  // Stream subscriptions - will be updated when video changes
+  // Stream subscriptions
   StreamSubscription<DatabaseEvent>? _likeSubscription;
   StreamSubscription<DatabaseEvent>? _saveSubscription;
   StreamSubscription<DatabaseEvent>? _followSubscription;
@@ -61,11 +64,14 @@ class _VideoFullScreenPageState extends State<VideoFullScreenPage> {
   @override
   void initState() {
     super.initState();
-
-    // Start by loading the initial post data
+    
+    // If we have a preloaded video URL, use it immediately
+    if (widget.initialVideoUrl != null) {
+      _initializeVideoControllerWithUrl(widget.initialPostId, widget.initialVideoUrl!);
+    }
+    
     _loadInitialPostData();
     
-    // Listen for auth state changes
     _authStateSubscription = _auth.authStateChanges().listen((User? user) {
       if (mounted) {
         setState(() {
@@ -78,123 +84,166 @@ class _VideoFullScreenPageState extends State<VideoFullScreenPage> {
     });
   }
 
+  void _initializeVideoControllerWithUrl(String postId, String videoUrl) {
+    if (videoUrl.isEmpty || _videoControllers.containsKey(postId)) return;
+
+    try {
+      final controller = VideoPlayerController.network(videoUrl);
+      _videoControllers[postId] = controller;
+
+      controller.initialize().then((_) {
+        if (mounted) {
+          setState(() {});
+        }
+        controller.setLooping(true);
+      }).catchError((error) {
+        print('Error initializing video controller: $error');
+      });
+    } catch (e) {
+      print('Error creating video controller: $e');
+    }
+  }
+
   Future<void> _loadInitialPostData() async {
     try {
-      // Fetch the initial post data from Firebase
-      final postSnapshot = await _database.child('posts/${widget.initialPostId}').get();
+      // If we already have the initial video from preloading, just get metadata
+      if (widget.initialVideoUrl != null) {
+        final postSnapshot = await _database.child('posts/${widget.initialPostId}').get();
+        
+        if (postSnapshot.exists && postSnapshot.value != null) {
+          final post = Map<String, dynamic>.from(postSnapshot.value as Map);
+          final userData = await _getUserData(post['userId'] ?? '');
+          
+          _videos.add({
+            'videoUrl': widget.initialVideoUrl!,
+            'userName': userData['userName'] ?? post['userName'] ?? 'Unknown User',
+            'userAvatar': userData['avatarUrl'] ?? post['userAvatar'] ?? '',
+            'caption': post['caption'] ?? '',
+            'likes': (post['likes'] is int) ? post['likes'] : 0,
+            'comments': (post['comments'] is Map) ? post['comments'].length : 0,
+            'postId': widget.initialPostId,
+            'userId': post['userId'] ?? '',
+          });
+          
+          // Play the initial video immediately
+          if (_videoControllers.containsKey(widget.initialPostId)) {
+            _videoControllers[widget.initialPostId]!.play();
+          }
+          
+          _initializeFirebaseListeners();
+          _loadMoreVideos();
+        }
+      } else {
+        // Original loading logic as fallback
+        final postSnapshot = await _database.child('posts/${widget.initialPostId}').get();
+        
+        if (postSnapshot.exists && postSnapshot.value != null) {
+          final post = Map<String, dynamic>.from(postSnapshot.value as Map);
+          final userData = await _getUserData(post['userId'] ?? '');
+          
+          _videos.add({
+            'videoUrl': post['videoUrl'],
+            'userName': userData['userName'] ?? post['userName'] ?? 'Unknown User',
+            'userAvatar': userData['avatarUrl'] ?? post['userAvatar'] ?? '',
+            'caption': post['caption'] ?? '',
+            'likes': (post['likes'] is int) ? post['likes'] : 0,
+            'comments': (post['comments'] is Map) ? post['comments'].length : 0,
+            'postId': widget.initialPostId,
+            'userId': post['userId'] ?? '',
+          });
+          
+          _initializeVideoController(0);
+          _initializeFirebaseListeners();
+          _loadMoreVideos();
+        }
+      }
+    } catch (e) {
+      print('Error loading initial post data: $e');
+    }
+  }
+
+  Future<void> _loadMoreVideos() async {
+    if (_isLoadingMore || !_hasMoreVideos) return;
+
+    setState(() {
+      _isLoadingMore = true;
+    });
+
+    try {
+      // Optimized query to get only video posts
+      final query = _database.child('posts')
+        .orderByChild('mediaType')
+        .equalTo('video')
+        .limitToFirst(10);
+
+      final postsSnapshot = await query.get();
       
-      if (postSnapshot.exists && postSnapshot.value != null) {
-        final post = Map<String, dynamic>.from(postSnapshot.value as Map);
+      if (postsSnapshot.value == null) {
+        setState(() {
+          _hasMoreVideos = false;
+        });
+        return;
+      }
+
+      final allPosts = Map<dynamic, dynamic>.from(postsSnapshot.value as Map);
+      final List<Map<String, dynamic>> videoList = [];
+      final List<MapEntry<dynamic, dynamic>> postEntries = allPosts.entries.toList();
+      
+      // Shuffle for variety but limit to reasonable number
+      postEntries.shuffle();
+      final postsToLoad = postEntries.take(5).toList();
+
+      for (var postEntry in postsToLoad) {
+        final key = postEntry.key;
+        final value = postEntry.value;
         
-        // Get user data for this post
+        // Skip if already loaded
+        if (_videos.any((v) => v['postId'] == key)) continue;
+        
+        final post = Map<String, dynamic>.from(value);
         final userData = await _getUserData(post['userId'] ?? '');
-        
-        // Add the initial video to the list
-        _videos.add({
+
+        videoList.add({
           'videoUrl': post['videoUrl'],
           'userName': userData['userName'] ?? post['userName'] ?? 'Unknown User',
           'userAvatar': userData['avatarUrl'] ?? post['userAvatar'] ?? '',
           'caption': post['caption'] ?? '',
           'likes': (post['likes'] is int) ? post['likes'] : 0,
           'comments': (post['comments'] is Map) ? post['comments'].length : 0,
-          'postId': widget.initialPostId,
+          'postId': key,
           'userId': post['userId'] ?? '',
         });
-        
-        // Initialize video controller for the first video
-        _initializeVideoController(0);
-        
-        // Initialize Firebase listeners for the first video
-        _initializeFirebaseListeners();
-        
-        // Load more videos
-        _loadMoreVideos();
+
+        // Preload the video immediately
+        _initializeVideoControllerWithUrl(key, post['videoUrl']);
       }
+
+      setState(() {
+        _videos.addAll(videoList);
+      });
+
     } catch (e) {
-      print('Error loading initial post data: $e');
+      print('Error loading more videos: $e');
+    } finally {
+      setState(() {
+        _isLoadingMore = false;
+      });
     }
   }
-// here 
-Future<void> _loadMoreVideos() async {
-  if (_isLoadingMore || !_hasMoreVideos) return;
 
-  setState(() {
-    _isLoadingMore = true;
-  });
-
-  try {
-    // Get all posts to select randomly
-    final allPostsSnapshot = await _database.child('posts').get();
-    if (allPostsSnapshot.value == null) {
-      setState(() {
-        _hasMoreVideos = false;
-      });
-      return;
-    }
-
-    final allPosts = Map<dynamic, dynamic>.from(allPostsSnapshot.value as Map);
-    
-    // Filter for video posts and exclude already loaded ones
-    final videoPosts = allPosts.entries.where((entry) {
-      final post = Map<String, dynamic>.from(entry.value);
-      final isVideo = post['mediaType'] == 'video' && post['videoUrl'] != null;
-      final notLoaded = !_videos.any((v) => v['postId'] == entry.key);
-      return isVideo && notLoaded;
-    }).toList();
-
-    // If no more videos available
-    if (videoPosts.isEmpty) {
-      setState(() {
-        _hasMoreVideos = false;
-      });
-      return;
-    }
-
-    // Shuffle the available videos for randomness
-    videoPosts.shuffle();
-
-    // Limit to 10 posts per load
-    final postsToLoad = videoPosts.take(10).toList();
-    
-    final List<Map<String, dynamic>> videoList = [];
-
-    for (var postEntry in postsToLoad) {
-      final key = postEntry.key;
-      final value = postEntry.value;
-      final post = Map<String, dynamic>.from(value);
-
-      // Get user data for this post
-      final userData = await _getUserData(post['userId'] ?? '');
-
-      videoList.add({
-        'videoUrl': post['videoUrl'],
-        'userName': userData['userName'] ?? post['userName'] ?? 'Unknown User',
-        'userAvatar': userData['avatarUrl'] ?? post['userAvatar'] ?? '',
-        'caption': post['caption'] ?? '',
-        'likes': (post['likes'] is int) ? post['likes'] : 0,
-        'comments': (post['comments'] is Map) ? post['comments'].length : 0,
-        'postId': key,
-        'userId': post['userId'] ?? '',
-      });
-    }
-
-    setState(() {
-      _videos.addAll(videoList);
-      
-      // Initialize video controllers for new videos
-      for (int i = _videos.length - videoList.length; i < _videos.length; i++) {
-        _initializeVideoController(i);
+  void _preloadNearbyVideos(int currentIndex) {
+    // Preload next videos
+    for (int i = 1; i <= _preloadCount; i++) {
+      final nextIndex = currentIndex + i;
+      if (nextIndex < _videos.length) {
+        final nextVideo = _videos[nextIndex];
+        if (!_preloadedPostIds.contains(nextVideo['postId'])) {
+          _initializeVideoController(nextIndex);
+          _preloadedPostIds.add(nextVideo['postId']);
+        }
       }
-    });
-
-  } catch (e) {
-    print('Error loading more videos: $e');
-  } finally {
-    setState(() {
-      _isLoadingMore = false;
-    });
+    }
   }
-}
 
   // Helper method to get user data from Firebase
   Future<Map<String, dynamic>> _getUserData(String userId) async {
@@ -211,7 +260,7 @@ Future<void> _loadMoreVideos() async {
 
     return {};
   }
-// maybe here 
+
   void _initializeVideoController(int index) {
     final video = _videos[index];
     final String videoUrl = video['videoUrl'] ?? '';
@@ -236,11 +285,6 @@ Future<void> _loadMoreVideos() async {
               setState(() {});
             }
             controller.setLooping(true);
-
-            // Play the video immediately if it's the current one
-            if (index == _currentVideoIndex) {
-              controller.play();
-            }
           })
           .catchError((error) {
             print('Error initializing video controller: $error');
@@ -1085,11 +1129,14 @@ Future<void> _loadMoreVideos() async {
               _currentVideoIndex = index;
             });
 
+            // Preload nearby videos
+            _preloadNearbyVideos(index);
+
             // Update Firebase listeners for the new video
             _initializeFirebaseListeners();
 
             // Load more videos if we're near the end
-            if (index >= _videos.length - 2 &&
+            if (index >= _videos.length - 6 &&
                 _hasMoreVideos &&
                 !_isLoadingMore) {
               _loadMoreVideos();

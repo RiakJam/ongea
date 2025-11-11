@@ -12,7 +12,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.ongea"
-        minSdk = 21
+        minSdk = flutter.minSdkVersion
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -27,9 +27,20 @@ android {
         jvmTarget = "11"
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("upload-keystore.jks")
+            storePassword = "charity"
+            keyAlias = "upload"
+            keyPassword = "charity"
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }

@@ -6,6 +6,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:path/path.dart' as path;
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:video_compress/video_compress.dart';
 
 class CreatePostPage extends StatefulWidget {
   const CreatePostPage({super.key});
@@ -36,12 +38,12 @@ class _CreatePostPageState extends State<CreatePostPage> {
     _captionController.addListener(() => setState(() {}));
   }
 
+  // Pick multiple images
   Future<void> _pickImage() async {
     try {
       final List<XFile> images = await _picker.pickMultiImage(
         maxWidth: 2000,
         maxHeight: 2000,
-        imageQuality: 85,
       );
 
       if (images.isEmpty) return;
@@ -51,8 +53,15 @@ class _CreatePostPageState extends State<CreatePostPage> {
         return;
       }
 
+      // Compress images
+      List<File> compressedImages = [];
+      for (var img in images) {
+        final compressed = await _compressImage(File(img.path));
+        if (compressed != null) compressedImages.add(compressed);
+      }
+
       setState(() {
-        _selectedImages.addAll(images.map((image) => File(image.path)));
+        _selectedImages.addAll(compressedImages);
         _selectedVideo = null;
         _disposeVideo();
         _errorMessage = null;
@@ -62,6 +71,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
     }
   }
 
+  // Pick video
   Future<void> _pickVideo() async {
     try {
       final XFile? video = await _picker.pickVideo(
@@ -75,8 +85,15 @@ class _CreatePostPageState extends State<CreatePostPage> {
           _errorMessage = null;
         });
 
-        final videoFile = File(video.path);
-        await _handleSelectedVideo(videoFile);
+        final compressedVideo = await _compressVideo(File(video.path));
+        if (compressedVideo != null) {
+          await _handleSelectedVideo(compressedVideo);
+        } else {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = "Video compression failed.";
+          });
+        }
       }
     } catch (e) {
       setState(() {
@@ -84,6 +101,44 @@ class _CreatePostPageState extends State<CreatePostPage> {
         _errorMessage = "Couldn't load video. Please try another file.";
       });
     }
+  }
+
+  // Compress image
+  // Future<File?> _compressImage(File file) async {
+  //   final targetPath = '${file.parent.path}/compressed_${path.basename(file.path)}';
+  //   final result = await FlutterImageCompress.compressAndGetFile(
+  //     file.absolute.path,
+  //     targetPath,
+  //     quality: 70,
+  //   );
+  //   return result;
+  // }
+  Future<File?> _compressImage(File file) async {
+    final targetPath =
+        '${file.parent.path}/compressed_${path.basename(file.path)}';
+    final result = await FlutterImageCompress.compressAndGetFile(
+      file.absolute.path,
+      targetPath,
+      quality: 70,
+    );
+
+    // Convert XFile to File if needed
+    if (result is XFile) {
+      return File(result.path);
+    }
+
+    return result as File?;
+  }
+
+  // Compress video
+  Future<File?> _compressVideo(File file) async {
+    final info = await VideoCompress.compressVideo(
+      file.path,
+      quality: VideoQuality.MediumQuality,
+      deleteOrigin: false,
+    );
+    if (info?.file != null) return info!.file;
+    return null;
   }
 
   Future<void> _handleSelectedVideo(File videoFile) async {
@@ -167,7 +222,6 @@ class _CreatePostPageState extends State<CreatePostPage> {
       final user = _auth.currentUser;
       if (user == null) throw Exception("User not logged in");
 
-      // Prepare post data
       Map<String, dynamic> postData = {
         'userId': user.uid,
         'userEmail': user.email,
@@ -182,7 +236,6 @@ class _CreatePostPageState extends State<CreatePostPage> {
         'status': 'active',
       };
 
-      // Handle video upload
       if (_selectedVideo != null) {
         String? videoUrl = await _uploadMedia(_selectedVideo!, 'videos');
         if (videoUrl != null) {
@@ -193,26 +246,21 @@ class _CreatePostPageState extends State<CreatePostPage> {
         } else {
           throw Exception("Failed to upload video");
         }
-      }
-      // Handle image uploads
-      else if (_selectedImages.isNotEmpty) {
+      } else if (_selectedImages.isNotEmpty) {
         List<String> imageUrls = [];
         for (var image in _selectedImages) {
           String? imageUrl = await _uploadMedia(image, 'images');
-          if (imageUrl != null) {
+          if (imageUrl != null)
             imageUrls.add(imageUrl);
-          } else {
+          else
             throw Exception("Failed to upload images");
-          }
         }
         postData['imageUrls'] = imageUrls;
-        postData['mediaType'] = 'image'; // ✅ This must match your rules
+        postData['mediaType'] = 'image';
       } else {
-        // Text-only post
         postData['mediaType'] = 'text';
       }
 
-      // Push to database - using push() to generate a unique key
       DatabaseReference newPostRef = _database.push();
       await newPostRef.set(postData);
 
@@ -221,14 +269,10 @@ class _CreatePostPageState extends State<CreatePostPage> {
         _successMessage = "Post created successfully!";
       });
 
-      // Clear form after successful post
       _captionController.clear();
       _selectedImages.clear();
       _selectedVideo = null;
       _disposeVideo();
-
-      // Removed the automatic navigation code
-      // The user will stay on the page and can create another post if desired
     } catch (e) {
       setState(() {
         _isUploading = false;
@@ -261,9 +305,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
                         _videoController!.value.isPlaying
                             ? Icons.pause
                             : Icons.play_arrow,
-                        color: Colors.white.withOpacity(
-                          0.8,
-                        ), // Still works but deprecated
+                        color: Colors.white.withOpacity(0.8),
                         size: 50,
                       ),
                       onPressed: () {
@@ -410,7 +452,6 @@ class _CreatePostPageState extends State<CreatePostPage> {
                   ],
                 ),
                 const SizedBox(height: 16),
-
                 if (_selectedVideo != null || _selectedImages.isNotEmpty)
                   Column(
                     children: [
@@ -418,8 +459,6 @@ class _CreatePostPageState extends State<CreatePostPage> {
                       const SizedBox(height: 16),
                     ],
                   ),
-
-                // Add to your post section - simplified without privacy selector
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -460,7 +499,6 @@ class _CreatePostPageState extends State<CreatePostPage> {
               ],
             ),
           ),
-
           if (_errorMessage != null)
             Positioned(
               bottom: 20,
@@ -486,7 +524,6 @@ class _CreatePostPageState extends State<CreatePostPage> {
                 ),
               ),
             ),
-
           if (_successMessage != null)
             Positioned(
               bottom: 20,
@@ -520,7 +557,6 @@ class _CreatePostPageState extends State<CreatePostPage> {
                 ),
               ),
             ),
-
           if (_isLoading || _isUploading)
             Container(
               color: Colors.black.withOpacity(0.3),

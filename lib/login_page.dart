@@ -1,13 +1,14 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'pages/home_feed_page.dart'; // Import the HomeFeedPage
-import 'signup_page.dart'; // 👈 Import the SignupPage
+import 'pages/home_feed_page.dart';
+import 'signup_page.dart';
 
 class LoginPage extends StatefulWidget {
-  final bool cameFromHomePage; // Add this parameter
+  final bool cameFromHomePage;
+  final Map<String, dynamic>? arguments;
 
-  const LoginPage({Key? key, this.cameFromHomePage = false}) : super(key: key);
+  const LoginPage({Key? key, this.cameFromHomePage = false, this.arguments}) : super(key: key);
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -21,6 +22,7 @@ class _LoginPageState extends State<LoginPage> {
   bool _obscurePassword = true;
   bool _isOtpSent = false;
   bool _isOtpVerified = false;
+  String? _verificationMessage;
 
   String _generatedOtp = "";
 
@@ -31,14 +33,36 @@ class _LoginPageState extends State<LoginPage> {
   final otpController = TextEditingController();
   final newPasswordController = TextEditingController();
 
+  @override
+  void initState() {
+    super.initState();
+    // Check if we have a verification message from signup
+    _verificationMessage = widget.arguments?['verificationMessage'];
+    
+    // Show the verification message as a snackbar when the page loads
+    if (_verificationMessage != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showSnackBar(_verificationMessage!);
+      });
+    }
+  }
+
   /// ✅ Login with Email and Password
   Future<void> _login() async {
     setState(() => _isLoading = true);
     try {
-      await _auth.signInWithEmailAndPassword(
+      final userCredential = await _auth.signInWithEmailAndPassword(
         email: usernameController.text.trim(),
         password: passwordController.text.trim(),
       );
+
+      // Check if email is verified
+      if (userCredential.user != null && !userCredential.user!.emailVerified) {
+        _showSnackBar("Please verify your email before logging in. Check your inbox and spam folder.");
+        await _auth.signOut(); // Sign out if email is not verified
+        setState(() => _isLoading = false);
+        return;
+      }
 
       // Use different navigation based on where we came from
       if (widget.cameFromHomePage) {
@@ -99,6 +123,19 @@ class _LoginPageState extends State<LoginPage> {
       Navigator.pop(context);
     } catch (e) {
       _showSnackBar("Error: $e");
+    }
+  }
+
+  /// ✅ Resend verification email
+  Future<void> _resendVerificationEmail() async {
+    try {
+      final user = _auth.currentUser;
+      if (user != null && !user.emailVerified) {
+        await user.sendEmailVerification();
+        _showSnackBar("Verification email sent. Please check your inbox and spam folder.");
+      }
+    } catch (e) {
+      _showSnackBar("Error sending verification email: $e");
     }
   }
 
@@ -184,7 +221,8 @@ class _LoginPageState extends State<LoginPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: Colors.blue, // Explicitly set the snackbar color
+        backgroundColor: Colors.blue,
+        duration: const Duration(seconds: 5),
       ),
     );
   }
@@ -199,9 +237,6 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  // ... same imports and class definitions ...
-
-  // Inside your build method:
   @override
   Widget build(BuildContext context) {
     return Theme(
@@ -256,6 +291,31 @@ class _LoginPageState extends State<LoginPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // Verification message banner (if any)
+                  if (_verificationMessage != null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 20),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.email, color: Colors.blue),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _verificationMessage!,
+                              style: const TextStyle(color: Colors.blue),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  
                   const SizedBox(height: 20),
                   const Text(
                     "Welcome Back!",
@@ -339,6 +399,15 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 20),
 
+                  // Resend verification email button
+                  if (_verificationMessage != null) ...[
+                    OutlinedButton(
+                      onPressed: _resendVerificationEmail,
+                      child: const Text("Resend Verification Email"),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+
                   // Sign Up Redirect
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -350,7 +419,7 @@ class _LoginPageState extends State<LoginPage> {
                             context,
                             MaterialPageRoute(
                               builder: (context) => const SignupPage(),
-                            ), // 👈 Direct nav
+                            ),
                           );
                         },
                         child: const Text(

@@ -269,9 +269,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
   void _initializeVideoControllers(List<Map<String, dynamic>> postsList) {
     for (var post in postsList) {
       final postKey = post['key'];
-      if (post['mediaType'] == 'video' && post['mediaUrl'] != null) {
+      if (post['mediaType'] == 'video' && post['videoUrl'] != null) {
         try {
-          final controller = VideoPlayerController.network(post['mediaUrl']);
+          final controller = VideoPlayerController.network(post['videoUrl']);
           _videoControllers[postKey] = controller;
           _videoKeys[postKey] = GlobalKey();
           _userPausedVideos[postKey] = false;
