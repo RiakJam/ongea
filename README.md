@@ -35,40 +35,66 @@ This creates frustration and discouragement among everyday users who want their 
 Ongea Ikutoke solves this by addressing:
 
 ### 1. **Visibility Inequality**
-- Traditional platforms reward popularity over contribution.
+- Traditional platforms reward popularity over contribution.  
 - **Solution:** Our algorithm gives equal visibility to high-quality content from all users.
 
 ### 2. **Superficial Engagement**
-- Likes and follows often overshadow genuine interaction.
+- Likes and follows often overshadow genuine interaction.  
 - **Solution:** Encourage meaningful conversations through topic-based communities and thoughtful engagement features.
 
 ### 3. **Community Fragmentation**
-- Users struggle to find authentic, localized, or interest-based communities.
+- Users struggle to find authentic, localized, or interest-based communities.  
 - **Solution:** Built-in discovery tools help connect people through shared goals, hobbies, and causes.
 
 ### 4. **Data & Privacy Concerns**
-- Many platforms exploit user data for ads and profit.
+- Many platforms exploit user data for ads and profit.  
 - **Solution:** Transparent data use policies and privacy-first design.
+
+---
+
+## 💵 Revenue Model
+
+Ongea Ikutoke currently monetizes through **two main channels**, with future expansion plans for brand advertising and creator partnerships.
+
+### **1. AdMob Ads**
+- Integrated AdMob advertising within the Flutter app.  
+- Non-intrusive banner and interstitial ads generate passive revenue based on impressions and clicks.  
+- Firebase Analytics ensures ad targeting and performance optimization.
+
+### **2. Virtual Gifts (Creator Monetization)**
+- Users can send **virtual gifts** to their favorite creators, similar to TikTok’s model.  
+- Ongea Ikutoke takes a **small percentage (e.g., 10–15%)** of each transaction as platform revenue.  
+- The system encourages content quality and user loyalty.
+
+### **3. Future Monetization Plans**
+- **Native In-App Advertising** for brands and small businesses.  
+- **Sponsored Communities & Challenges** – brand engagement through interactive campaigns.  
+- **Premium Subscriptions** for power users or businesses.  
+- **Creator Marketplace** – connecting brands with creators for paid collaborations.
 
 ---
 
 ## 🧠 Vision
 
 To build an online ecosystem where:
-- Everyone has a **voice**, not just an audience.
-- Content thrives through **authentic engagement**.
-- Communities are **supportive, safe, and inclusive**.
+- Everyone has a **voice**, not just an audience.  
+- Content thrives through **authentic engagement**.  
+- Communities are **supportive, safe, and inclusive**.  
+- Creators are **fairly rewarded** for their contributions.
 
 ---
 
 ## 🛠️ Tech Stack (MVP)
 
-- **Frontend:** React / React Native  
-- **Backend:** Node.js / Express  
-- **Database:** MongoDB / Firebase  
-- **Cloud:** AWS / Google Cloud  
-- **Authentication:** JWT / OAuth2  
-- **AI & Recommendation Engine:** Python (FastAPI)
+| Layer | Technology | Description |
+|-------|-------------|-------------|
+| **Frontend** | Dart (Flutter) | Cross-platform mobile app for Android & iOS |
+| **Backend** | Firebase | Authentication, Firestore Database, Cloud Storage, Cloud Functions |
+| **Authentication** | Firebase Auth | Email, Google, and social logins |
+| **Database** | Firebase Firestore | Real-time data for posts, chats, and notifications |
+| **Cloud Functions** | Node.js | Handles gifting, notifications, and moderation logic |
+| **Analytics & Ads** | Firebase Analytics + Google AdMob | User behavior tracking and ad monetization |
+| **Hosting & Storage** | Firebase Hosting + Cloud Storage | Image/video storage and app backend hosting |
 
 ---
 
@@ -78,9 +104,9 @@ To build an online ecosystem where:
 |-----------|--------------|----------------------|
 | **Marketing** | Social media ads, influencer outreach, launch campaigns | $2,000 |
 | **Branding & Design** | Logo, UI/UX assets, and promotional materials | $1,000 |
-| **Server & Hosting** | Cloud services, database, and storage (3 months) | $800 |
+| **Firebase & Cloud Costs** | Firestore, Storage, Functions (3 months) | $800 |
 | **Maintenance & Updates** | Bug fixes, feature iteration, and monitoring | $1,200 |
-| **Analytics & Tools** | Tracking user behavior, feedback, and metrics | $500 |
+| **Analytics & Tools** | Firebase Analytics, crash monitoring, and feedback | $500 |
 | **Community Management** | Moderation and user engagement initiatives | $500 |
 | **Contingency** | Buffer for unexpected costs | $500 |
 
@@ -88,21 +114,48 @@ To build an online ecosystem where:
 
 ---
 
+## 📊 Investor Summary
+
+### **Target Market**
+- Gen Z & young adults seeking authentic online interaction.  
+- Local creators, students, and micro-communities in emerging markets.  
+- Early adopters frustrated with algorithm bias on mainstream platforms.
+
+### **Revenue Projections (MVP Phase)**
+
+| Source | Description | 6-Month Estimate (USD) |
+|---------|--------------|------------------------|
+| **AdMob Ads** | Based on 10,000 DAU (daily active users) | ~$1,000–$1,500 |
+| **Gifting Commissions** | Assuming 2,000 active gifters/month | ~$1,500–$2,000 |
+| **Total (Initial Runway)** | — | **$2,500–$3,500 / 6 months** |
+
+### **Scaling Potential (12-Month Outlook)**
+- With 50,000 active users:  
+  - **Ad Revenue:** ~$8,000–$10,000/month  
+  - **Gifting Revenue:** ~$12,000–$15,000/month  
+  - **Projected Annual Run Rate:** ~$200K–$300K USD  
+
+### **Funding Goals**
+- **MVP Launch & Growth:** $6,500 (self-funded or pre-seed)  
+- **Next Phase (Scaling):** $25,000–$50,000 for marketing, team expansion, and infrastructure.
+
+---
+
 ## 📈 Growth Strategy
 
-1. **Launch with Niche Communities** (local interests, campus groups, etc.)  
+1. **Launch with Niche Communities** (local interests, campus groups, creators).  
 2. **Referral Program** – Reward users for inviting friends.  
 3. **Micro-Influencer Partnerships** – Collaborate with relatable creators.  
 4. **Organic Marketing** – Use storytelling, challenges, and user-driven campaigns.  
-5. **Feedback Loops** – Rapidly iterate based on user feedback.
+5. **Feedback Loops** – Rapidly iterate based on user feedback.  
 
 ---
 
 ## 🤝 Contributors
 
 - **Founder:** [Your Name]  
-- **Design Lead:** [Name or Placeholder]  
-- **Engineering:** [Team / Collaborators]  
+- **Lead Developer:** [Your Name or Team]  
+- **Design Lead:** [Placeholder]  
 - **Advisors:** [Optional]
 
 ---
@@ -111,7 +164,7 @@ To build an online ecosystem where:
 
 📧 **Email:** hello@ongeaikutoke.com  
 🌐 **Website:** [www.ongeaikutoke.com](#)  
-📱 **Socials:** @ongeaikutoke on all major platforms
+📱 **Socials:** @ongeaikutoke on all major platforms  
 
 ---
 
