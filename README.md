@@ -92,7 +92,6 @@ To build an online ecosystem where:
 | **Backend** | Firebase | Authentication, Firestore Database, Cloud Storage, Cloud Functions |
 | **Authentication** | Firebase Auth | Email, Google, and social logins |
 | **Database** | Firebase Firestore | Real-time data for posts, chats, and notifications |
-| **Cloud Functions** | Node.js | Handles gifting, notifications, and moderation logic |
 | **Analytics & Ads** | Firebase Analytics + Google AdMob | User behavior tracking and ad monetization |
 | **Hosting & Storage** | Firebase Hosting + Cloud Storage | Image/video storage and app backend hosting |
 
@@ -103,14 +102,14 @@ To build an online ecosystem where:
 | Category | Description | Estimated Cost (USD) |
 |-----------|--------------|----------------------|
 | **Marketing** | Social media ads, influencer outreach, launch campaigns | $2,000 |
-| **Branding & Design** | Logo, UI/UX assets, and promotional materials | $1,000 |
+| **Branding & Design** | Logo, UI/UX assets, and promotional materials | $500 |
 | **Firebase & Cloud Costs** | Firestore, Storage, Functions (3 months) | $800 |
 | **Maintenance & Updates** | Bug fixes, feature iteration, and monitoring | $1,200 |
 | **Analytics & Tools** | Firebase Analytics, crash monitoring, and feedback | $500 |
 | **Community Management** | Moderation and user engagement initiatives | $500 |
 | **Contingency** | Buffer for unexpected costs | $500 |
 
-### **Total Estimated MVP Budget: $6,500 USD**
+### **Total Estimated MVP Budget: $6,000 USD**
 
 ---
 
@@ -153,18 +152,14 @@ To build an online ecosystem where:
 
 ## 🤝 Contributors
 
-- **Founder:** [Your Name]  
-- **Lead Developer:** [Your Name or Team]  
-- **Design Lead:** [Placeholder]  
-- **Advisors:** [Optional]
+- **Founder:** James Riak Samuel Yacobo  
 
 ---
 
 ## 📬 Contact
 
-📧 **Email:** hello@ongeaikutoke.com  
-🌐 **Website:** [www.ongeaikutoke.com](#)  
-📱 **Socials:** @ongeaikutoke on all major platforms  
+📧 **Email:** riakjms@gmail.com  
+🌐 **Website:** [https://riaktech.co.ke](#)   
 
 ---
 
