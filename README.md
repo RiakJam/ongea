@@ -99,17 +99,18 @@ To build an online ecosystem where:
 
 ## 💰 MVP Budget Estimate
 
-| Category | Description | Estimated Cost (USD) |
-|-----------|--------------|----------------------|
-| **Marketing** | Social media ads, influencer outreach, launch campaigns | $2,000 |
-| **Branding & Design** | Logo, UI/UX assets, and promotional materials | $500 |
-| **Firebase & Cloud Costs** | Firestore, Storage, Functions (3 months) | $800 |
-| **Maintenance & Updates** | Bug fixes, feature iteration, and monitoring | $1,200 |
-| **Analytics & Tools** | Firebase Analytics, crash monitoring, and feedback | $500 |
-| **Community Management** | Moderation and user engagement initiatives | $500 |
-| **Contingency** | Buffer for unexpected costs | $500 |
+| Category                   | Description                                             | Estimated Cost (USD) |
+| -------------------------- | ------------------------------------------------------- | -------------------- |
+| **Marketing**              | Social media ads, influencer outreach, launch campaigns | **$700**             |
+| **Branding & Design**      | Logo, UI/UX assets, and promotional materials           | **$200**             |
+| **Firebase & Cloud Costs** | Firestore, Storage, Functions (3 months)                | **$400**             |
+| **Maintenance & Updates**  | Bug fixes, feature iteration, and monitoring            | **$500**             |
+| **Analytics & Tools**      | Analytics, crash monitoring, user feedback tools        | **$200**             |
+| **Community Management**   | Moderation and user engagement initiatives              | **$150**             |
+| **Contingency**            | Buffer for unexpected costs                             | **$150**             |
 
-### **Total Estimated MVP Budget: $6,000 USD**
+
+### **Total Estimated MVP Budget: $2,300 USD**
 
 ---
 
